@@ -1,8 +1,8 @@
-// PlayerControls.js - Transport, search, source selection, and live tuning
+// PlayerControls.js - Transport, search, source selection, live tuning, album options
 
 export function PlayerControls(
   el,
-  { onResumeAudioContext, onSearch, onSelectTrack, onSourceChange, onPlay, onPause, onTuningChange }
+  { onResumeAudioContext, onSearch, onSelectTrack, onSourceChange, onPlay, onPause, onTuningChange, onAlbumOptions }
 ) {
   el.innerHTML = '';
 
@@ -61,24 +61,53 @@ export function PlayerControls(
     <label class="text-xs">Clamp
       <input type="range" min="0.5" max="1.0" step="0.05" value="0.9" class="align-middle ml-1" id="clamp">
     </label>
+    <label class="text-xs">Gamma
+      <input type="range" min="0.5" max="1.5" step="0.05" value="0.85" class="align-middle ml-1" id="gamma">
+    </label>
     <button class="ghost text-xs" id="reset">Reset</button>
   `;
 
-  tuning.querySelector('#sens').addEventListener('input', emit);
-  tuning.querySelector('#smooth').addEventListener('input', emit);
-  tuning.querySelector('#clamp').addEventListener('input', emit);
+  tuning.querySelector('#sens').addEventListener('input', emitTuning);
+  tuning.querySelector('#smooth').addEventListener('input', emitTuning);
+  tuning.querySelector('#clamp').addEventListener('input', emitTuning);
+  tuning.querySelector('#gamma').addEventListener('input', emitTuning);
   tuning.querySelector('#reset').addEventListener('click', () => {
     tuning.querySelector('#sens').value = '0.85';
     tuning.querySelector('#smooth').value = '0.65';
     tuning.querySelector('#clamp').value = '0.9';
-    emit();
+    tuning.querySelector('#gamma').value = '0.85';
+    emitTuning();
   });
 
-  function emit() {
+  function emitTuning() {
     const sensitivity = parseFloat(tuning.querySelector('#sens').value);
     const smoothing = parseFloat(tuning.querySelector('#smooth').value);
     const clampMax = parseFloat(tuning.querySelector('#clamp').value);
-    onTuningChange?.({ sensitivity, smoothing, clampMax });
+    const gamma = parseFloat(tuning.querySelector('#gamma').value);
+    onTuningChange?.({ sensitivity, smoothing, clampMax, gamma });
+  }
+
+  // Album options
+  const albumOpts = document.createElement('div');
+  albumOpts.className = 'flex items-center gap-3 flex-wrap';
+  albumOpts.innerHTML = `
+    <span class="text-xs text-[color:var(--muted)]">Album</span>
+    <label class="text-xs inline-flex items-center gap-1">
+      <input type="checkbox" id="useColors" checked>
+      Use Colors
+    </label>
+    <label class="text-xs inline-flex items-center gap-1">
+      <input type="checkbox" id="useTexture" checked>
+      Use Texture
+    </label>
+  `;
+  albumOpts.querySelector('#useColors').addEventListener('change', emitAlbum);
+  albumOpts.querySelector('#useTexture').addEventListener('change', emitAlbum);
+
+  function emitAlbum() {
+    const useColors = albumOpts.querySelector('#useColors').checked;
+    const useTexture = albumOpts.querySelector('#useTexture').checked;
+    onAlbumOptions?.({ useColors, useTexture });
   }
 
   // Search
@@ -107,6 +136,7 @@ export function PlayerControls(
 
   row1.appendChild(transport);
   row1.appendChild(tuning);
+  row1.appendChild(albumOpts);
   row1.appendChild(searchWrap);
 
   el.appendChild(row1);

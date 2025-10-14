@@ -1,6 +1,6 @@
 // audioEngine.js - Web Audio API logic
-// Provides microphone and <audio> element sources with FFT analysis.
-// Exports normalized bands: bass, mid, treble (0..1) arrays and aggregate values.
+// Adds energy, spectral centroid, and beat pulse detection.
+// Exports normalized bands and metrics: bass, mid, treble, energy, centroid(0..1), beatPulse(0..1)
 
 export class AudioEngine {
   constructor() {
@@ -8,9 +8,10 @@ export class AudioEngine {
     this.analyser = null;
     this.sourceNode = null;
     this.freqData = null;
+    this.timeData = null;
     this.ready = false;
 
-    this.fftSize = 2048; // power of two
+    this.fftSize = 2048;
     this.smoothingTimeConstant = 0.85;
 
     this.bandRanges = {
@@ -24,6 +25,13 @@ export class AudioEngine {
     // Cache a single MediaElementSourceNode per HTMLMediaElement
     this._mediaElement = null;
     this._mediaElementSource = null;
+
+    // Beat detection buffers and state
+    this._energyHistory = new Float32Array(64); // ~1s at 60fps-ish calls
+    this._energyIdx = 0;
+    this._energyFilled = false;
+    this._beatPulse = 0; // decaying pulse 0..1
+    this._lastTs = performance.now();
   }
 
   async init() {
@@ -38,6 +46,7 @@ export class AudioEngine {
 
     const bufferLength = this.analyser.frequencyBinCount;
     this.freqData = new Uint8Array(bufferLength);
+    this.timeData = new Uint8Array(this.analyser.fftSize);
 
     this.ready = true;
   }
@@ -82,11 +91,13 @@ export class AudioEngine {
   async connectToAudioElement(audioEl) {
     await this.init();
 
+    // Reuse existing source node if same element
     if (this._mediaElementSource && this._mediaElement === audioEl) {
       this.connectNode(this._mediaElementSource);
       return true;
     }
 
+    // Otherwise detach previous and create a new MESN
     if (this._mediaElementSource && this._mediaElement !== audioEl) {
       try { this._mediaElementSource.disconnect(); } catch {}
       this._mediaElementSource = null;
@@ -116,8 +127,71 @@ export class AudioEngine {
 
   _freqToIndex(freq) {
     const nyquist = this.sampleRate / 2;
-    const index = Math.round(freq / nyquist * this.analyser.frequencyBinCount);
+    const index = Math.round((freq / nyquist) * this.analyser.frequencyBinCount);
     return Math.min(Math.max(index, 0), this.analyser.frequencyBinCount - 1);
+  }
+
+  _computeEnergyAndCentroid() {
+    // Energy: normalized average magnitude
+    let sum = 0;
+    for (let i = 0; i < this.freqData.length; i++) sum += this.freqData[i];
+    const energy = (sum / (255 * this.freqData.length)) || 0;
+
+    // Spectral centroid (Hz normalized 0..1)
+    let num = 0;
+    let den = 0;
+    const nyquist = this.sampleRate / 2;
+    for (let i = 0; i < this.freqData.length; i++) {
+      const mag = this.freqData[i];
+      den += mag;
+      const freq = (i / this.freqData.length) * nyquist;
+      num += freq * mag;
+    }
+    const centroidHz = den > 0 ? num / den : 0;
+    const centroid = Math.min(1, Math.max(0, centroidHz / nyquist));
+    return { energy, centroid };
+  }
+
+  _updateBeat(energy) {
+    // Update ring buffer
+    this._energyHistory[this._energyIdx++] = energy;
+    if (this._energyIdx >= this._energyHistory.length) {
+      this._energyIdx = 0;
+      this._energyFilled = true;
+    }
+
+    const len = this._energyFilled ? this._energyHistory.length : this._energyIdx;
+    if (len < 8) return this._beatPulse; // not enough data yet
+
+    // Mean and stdev over window
+    let mean = 0;
+    for (let i = 0; i < len; i++) mean += this._energyHistory[i];
+    mean /= len;
+
+    let variance = 0;
+    for (let i = 0; i < len; i++) {
+      const d = this._energyHistory[i] - mean;
+      variance += d * d;
+    }
+    variance /= len;
+    const stdev = Math.sqrt(variance);
+
+    const threshold = mean + 1.5 * stdev; // sensitivity factor
+    const isBeat = energy > threshold && energy > 0.1;
+
+    const now = performance.now();
+    const dt = Math.max(1, now - this._lastTs) / 1000; // seconds
+    this._lastTs = now;
+
+    // Decay pulse
+    const decay = 2.5; // per second
+    this._beatPulse = Math.max(0, this._beatPulse - decay * dt);
+
+    if (isBeat) {
+      this._beatPulse = Math.min(1, this._beatPulse + 0.9);
+    }
+
+    return this._beatPulse;
   }
 
   getBands() {
@@ -126,7 +200,10 @@ export class AudioEngine {
         raw: [],
         bass: { values: [], avg: 0 },
         mid: { values: [], avg: 0 },
-        treble: { values: [], avg: 0 }
+        treble: { values: [], avg: 0 },
+        energy: 0,
+        centroid: 0,
+        beatPulse: 0
       };
     }
 
@@ -141,11 +218,21 @@ export class AudioEngine {
       return { values: norm, avg };
     };
 
-    return {
+    const bands = {
       raw: this.freqData,
       bass: segment(...this.bandRanges.bass),
       mid: segment(...this.bandRanges.mid),
       treble: segment(...this.bandRanges.treble)
+    };
+
+    const { energy, centroid } = this._computeEnergyAndCentroid();
+    const beatPulse = this._updateBeat(energy);
+
+    return {
+      ...bands,
+      energy,
+      centroid,
+      beatPulse
     };
   }
 }

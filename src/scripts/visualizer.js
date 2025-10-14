@@ -1,6 +1,5 @@
-// visualizer.js - Three.js + shaders with audio smoothing and tuning
-// Initializes a full-screen plane and maps audio bands to shader uniforms.
-// Shaders are loaded from /src/assets/shaders using fetch.
+// visualizer.js - Three.js + shaders with album texture and advanced metrics
+// New uniforms: uBeat, uEnergy, uCentroid, uAlbumTex, uAlbumOn, uAlbumAvg
 
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
 
@@ -29,37 +28,44 @@ export class Visualizer {
       uBass: { value: 0 },
       uMid: { value: 0 },
       uTreble: { value: 0 },
+      uEnergy: { value: 0 },
+      uCentroid: { value: 0 },
+      uBeat: { value: 0 },
       // generic params
       uParam1: { value: 0 },
       uParam2: { value: 0 },
       uParam3: { value: 0 },
       uParam4: { value: 0 },
+      // album-driven
+      uAlbumOn: { value: 0 }, // 0/1
+      uAlbumAvg: { value: new THREE.Color('#808080') },
+      uAlbumTex: { value: null },
       // colors
       uColor1: { value: new THREE.Color('#ffffff') },
       uColor2: { value: new THREE.Color('#000000') }
     };
 
-    // Visual tuning (live adjustable)
+    // Visual tuning
     this.tuning = {
-      sensitivity: 0.85,  // global intensity multiplier (0.1..2.0 typical)
-      smoothing: 0.65,    // 0..0.95 high = smoother visuals
-      clampMin: 0.0,      // clamp lower bound after gain/bias
-      clampMax: 0.9,      // clamp upper bound to avoid overdriving shaders
-      bias: 0.0           // add/subtract constant offset before clamp
+      sensitivity: 0.85,
+      smoothing: 0.65,
+      clampMin: 0.0,
+      clampMax: 0.9,
+      bias: 0.0,
+      gamma: 0.85 // compress highs: value = pow(value, gamma)
     };
 
-    // Per-band exponential moving averages to smooth visuals
-    this._ema = { bass: 0, mid: 0, treble: 0 };
-
+    this._ema = { bass: 0, mid: 0, treble: 0, energy: 0, centroid: 0, beat: 0 };
     this._raf = 0;
     this._start = performance.now();
     this._preset = null;
-    this._audioGetter = null; // function returning bands
+    this._audioGetter = null;
+
+    this._textureLoader = new THREE.TextureLoader();
+    this._albumTexture = null;
   }
 
-  setTuning(next = {}) {
-    Object.assign(this.tuning, next);
-  }
+  setTuning(next = {}) { Object.assign(this.tuning, next); }
 
   async init() {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -97,7 +103,6 @@ export class Visualizer {
     this.uniforms.uColor1.value = new THREE.Color(preset.params?.color1 || '#ffffff');
     this.uniforms.uColor2.value = new THREE.Color(preset.params?.color2 || '#000000');
 
-    // Map generic params to uParam1..4 if present
     const numericVals = Object.values(preset.params || {}).filter(v => typeof v === 'number');
     this.uniforms.uParam1.value = numericVals[0] ?? 0;
     this.uniforms.uParam2.value = numericVals[1] ?? 0;
@@ -114,9 +119,7 @@ export class Visualizer {
     this.mesh.material = this.material;
   }
 
-  setAudioGetter(fn) {
-    this._audioGetter = fn;
-  }
+  setAudioGetter(fn) { this._audioGetter = fn; }
 
   _onResize() {
     if (!this.renderer) return;
@@ -126,9 +129,37 @@ export class Visualizer {
     this.uniforms.uResolution.value.set(w, h);
   }
 
+  async setAlbumTexture(url) {
+    if (!url) {
+      this._albumTexture = null;
+      this.uniforms.uAlbumTex.value = null;
+      return;
+    }
+    return new Promise((resolve, reject) => {
+      this._textureLoader.setCrossOrigin('anonymous');
+      this._textureLoader.load(url, tex => {
+        tex.wrapS = tex.wrapT = THREE.MirroredRepeatWrapping;
+        this._albumTexture = tex;
+        this.uniforms.uAlbumTex.value = tex;
+        resolve(tex);
+      }, undefined, reject);
+    });
+  }
+
+  setAlbumColors({ primary, secondary, avg }, enabled = true) {
+    try {
+      if (enabled && primary && secondary) {
+        this.uniforms.uColor1.value = new THREE.Color(primary);
+        this.uniforms.uColor2.value = new THREE.Color(secondary);
+      }
+      if (avg) this.uniforms.uAlbumAvg.value = new THREE.Color(avg);
+      this.uniforms.uAlbumOn.value = enabled ? 1 : 0;
+    } catch {
+      // ignore color parse errors
+    }
+  }
+
   _smooth(val, key) {
-    // smoothing is specified 0..0.95 => convert to EMA alpha
-    // alpha = 1 - smoothing; higher smoothing -> lower alpha -> slower response
     const smoothing = Math.min(0.95, Math.max(0, this.tuning.smoothing));
     const alpha = 1 - smoothing;
     const prev = this._ema[key];
@@ -137,13 +168,14 @@ export class Visualizer {
     return next;
   }
 
-  _processBand(raw) {
-    // apply bias and sensitivity, then clamp to safe range
+  _shape(val) {
     const g = this.tuning.sensitivity ?? 1.0;
     const b = this.tuning.bias ?? 0.0;
     const minV = this.tuning.clampMin ?? 0.0;
     const maxV = this.tuning.clampMax ?? 0.95;
-    return Math.min(maxV, Math.max(minV, (raw + b) * g));
+    const gamma = this.tuning.gamma ?? 1.0;
+    const x = Math.min(maxV, Math.max(minV, (val + b) * g));
+    return Math.pow(x, gamma);
   }
 
   start() {
@@ -155,24 +187,22 @@ export class Visualizer {
 
       if (this._audioGetter) {
         const bands = this._audioGetter();
-        // Safe defaults if band missing
-        const bassRaw = clamp01(bands?.bass?.avg ?? 0);
-        const midRaw = clamp01(bands?.mid?.avg ?? 0);
-        const trebleRaw = clamp01(bands?.treble?.avg ?? 0);
-
-        const bassAdj = this._processBand(bassRaw);
-        const midAdj = this._processBand(midRaw);
-        const trebleAdj = this._processBand(trebleRaw);
-
-        const bass = this._smooth(bassAdj, 'bass');
-        const mid = this._smooth(midAdj, 'mid');
-        const treble = this._smooth(trebleAdj, 'treble');
+        // bands may include energy, centroid, beatPulse
+        const bass = this._smooth(this._shape(clamp01(bands?.bass?.avg ?? 0)), 'bass');
+        const mid = this._smooth(this._shape(clamp01(bands?.mid?.avg ?? 0)), 'mid');
+        const treble = this._smooth(this._shape(clamp01(bands?.treble?.avg ?? 0)), 'treble');
+        const energy = this._smooth(this._shape(clamp01(bands?.energy ?? (bass + mid + treble) / 3)), 'energy');
+        const centroid = this._smooth(this._shape(clamp01(bands?.centroid ?? 0.5)), 'centroid');
+        const beat = this._smooth(clamp01(bands?.beatPulse ?? 0), 'beat');
 
         this.uniforms.uBass.value = bass;
         this.uniforms.uMid.value = mid;
         this.uniforms.uTreble.value = treble;
+        this.uniforms.uEnergy.value = energy;
+        this.uniforms.uCentroid.value = centroid;
+        this.uniforms.uBeat.value = beat;
 
-        // Optional preset param mapping (bounded by tuning already)
+        // Optional preset param mapping
         const map = this._preset?.audioMap || {};
         const setParam = (paramName, val) => {
           if (paramName === 'bloomIntensity' || paramName === 'glow') {
