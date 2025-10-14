@@ -1,61 +1,34 @@
-# Luma
+# Luma (Production)
 
-Spotify-connected, audio-reactive visualization and meditation web app. Choose a Spotify track (full track via Spotify SDK or 30s preview) or use microphone input, and enjoy real-time, audio-synchronized visual scenes.
+Spotify-connected, audio-reactive visualization and meditation web app. Full-track playback via Spotify Web Playback SDK (Premium), plus 30s Preview and Microphone modes. Layered, choreographed scenes with album-aware theming.
 
 - Live URL (after deploy): https://belisario-afk.github.io/luma/
 - Redirect URI (Spotify): https://belisario-afk.github.io/luma/
 - Client ID: 927fda6918514f96903e828fcd6bb576
 
-Note: Full-track playback uses the Spotify Web Playback SDK (Premium required). Visuals in SDK mode are driven by Spotify’s Audio Analysis synchronized to playback position. In Preview/Microphone modes, visuals are driven by live FFT via the Web Audio API.
-
 ## Quick Start
 
-1) Install (no build required)
-- This is a static site. You only need a local web server.
-
-2) Run locally
-- Option A: Python
-  - Python 3: `python -m http.server 5173`
-  - Open http://localhost:5173/luma/
-- Option B: npx serve
-  - `npx serve -p 5173 .`
-  - Open http://localhost:5173/luma/
-
-3) Log in with Spotify (production)
-- Visit https://belisario-afk.github.io/luma/
-- Click "Login with Spotify"
-- Approve permissions: streaming, user-read-email, user-read-private, user-read-playback-state, user-modify-playback-state
-- Premium is required for SDK full-track playback. If not available, use Preview or Microphone modes.
-
-4) Use the app
-- Select a Scene (preset)
-- Choose a Source:
-  - Preview (30s): plays track previews and uses live FFT for visuals
-  - Spotify (Full): plays full tracks via the Spotify SDK; visuals use Audio Analysis synchronized to player position
-  - Microphone: uses your mic input and live FFT
-- Search for a track and click it to play in the chosen source mode.
-- Use Play/Pause controls. UI fades after inactivity; move the mouse/tap to show it.
-
-5) Deploy to GitHub Pages
-- Create the repo `luma` under your GitHub account
-- Push this folder as the root of the repo
-- In repo Settings → Pages, set Source: `Deploy from a branch`, Branch: `main` and folder `/ (root)`
-- Your app will be at https://belisario-afk.github.io/luma/
-
-## Tech Stack
-
-- HTML5, CSS3 (Tailwind CDN + custom themes; optional prebuilt CSS)
-- Vanilla JavaScript (ES modules)
-- Three.js + GLSL shaders
-- Spotify Web API + Web Playback SDK (full tracks)
-- Web Audio API (FFT for previews and mic)
-- GitHub Pages (static hosting)
+- Install: no build needed (pure static site)
+- Run locally:
+  - Python: `python -m http.server 5173` then open http://localhost:5173/luma/
+  - Node: `npx serve -p 5173 .` then open http://localhost:5173/luma/
+- Login (production URL): visit https://belisario-afk.github.io/luma/ and click “Login with Spotify”
+  - Approve: streaming, user-read-email, user-read-private, user-read-playback-state, user-modify-playback-state
+  - Premium required for full-track SDK mode; otherwise use Preview or Microphone modes
+- Use:
+  - Pick a Scene
+  - Choose Source: Preview (30s), Spotify (Full), or Microphone
+  - Search and click a track; then press Play (activates SDK when using Spotify mode)
+  - Tune Sensitivity / Smoothing / Clamp / Gamma; enable/disable album color/texture
+- Deploy to GitHub Pages:
+  - Create repo `luma`, push this folder at repo root
+  - Settings → Pages → Deploy from branch → main → root
 
 ## Notes
 
-- The Web Playback SDK's audio output cannot be piped into the Web Audio API due to DRM. In SDK mode we synthesize band data from the Spotify Audio Analysis (per-segment loudness/timbre) in sync with the current playback position.
-- In Preview or Microphone modes, we perform true real-time FFT analysis.
+- SDK audio cannot be piped into Web Audio; SDK mode visuals use Spotify’s Audio Analysis when available, fall back to audio-features, then to a musical time-based synth. Preview/Mic modes use true real-time FFT.
+- All UI/visual tuning persists in localStorage. No Tailwind CDN is used (production-safe CSS).
 
-## Tailwind in production
+## License
 
-The Tailwind CDN warning is informational. For a production CSS build, see tailwind-setup.md (optional).
+MIT (or your choice)

@@ -1,4 +1,4 @@
-// Legacy single-pass preset kept for future use (now layered engine is default)
+// Legacy single-pass preset kept for reference (not used by layered engine)
 #ifdef GL_ES
 precision mediump float;
 #endif

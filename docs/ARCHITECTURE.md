@@ -1,67 +1,50 @@
-# Luma Architecture
+# Luma Architecture (Production)
 
 ## Overview
 
 Luma is a static web application composed of:
-- Authentication (Spotify Implicit Grant) for user search/profile
-- Audio input (microphone or 30s track previews)
-- Real-time visualization (Three.js + GLSL fragment shaders)
-- A lightweight UI layer (Vanilla JS + Tailwind Play CDN)
+- Authentication (Spotify PKCE) for user search/profile and SDK control
+- Audio input:
+  - Microphone or 30s previews: real-time FFT via Web Audio
+  - Spotify SDK (Premium): full-track playback; visuals driven by Spotify Audio Analysis/Features or musical fallback
+- A layered visual engine (Three.js + GLSL multi-pass)
+- A choreography-friendly feature set (beats, sections, energy, spectral flux, centroid, vocal band)
+- A lightweight UI layer (vanilla JS + production-safe CSS)
 - Zero build pipeline; deployable to GitHub Pages
 
-## Module graph
+## Modules
 
-- `index.html`
-  - Loads styles and `src/scripts/app.js` (ES module)
-- `app.js`
-  - Orchestrates auth → audio → visualizer → UI
-  - Applies theme
-  - Wires up components and events
-- `auth.js`
-  - Handles login/logout/token storage
-  - Fetches `v1/me` profile
-- `audioEngine.js`
-  - Creates `AudioContext`, `AnalyserNode`
-  - Connects to microphone (`getUserMedia`) or `<audio>` element
-  - Computes FFT and returns normalized bands: bass/mid/treble
-  - Resolves Spotify track ID → preview URL
-- `visualizer.js`
-  - Initializes Three.js renderer + full-screen quad
-  - Loads fragment shaders from `/src/assets/shaders`
-  - Exposes uniforms:
-    - Time, resolution
-    - Audio bands (bass/mid/treble)
-    - Colors and generic params (`uParam1..uParam4`)
-  - Animation loop updates uniforms and renders
-- `presets.js`
-  - Catalog of presets with shader filename + default params
-  - Optional `audioMap` to map bands → param names
-- `components/*`
-  - `Navbar.js`: top bar (rendered via UI manager)
-  - `SceneSelector.js`: preset picker grid
-  - `PlayerControls.js`: transport, search, mic toggle
-  - `PresetPreview.js`: placeholder for future shader thumbs
-- `ui.js`
-  - Inactivity detection to auto-hide UI
-  - Toasts, navbar renderer
+- `index.html`: base HTML and styles; loads the SDK and app entry
+- `auth.js`: PKCE login, token storage/refresh, profile fetch
+- `audioEngine.js`: Web Audio `AnalyserNode`, extended features (sub/bass/low-mid/mid/high-mid/treble, vocal, energy, centroid, spectral flux, zcr, beats)
+- `analysisEngine.js`: Spotify Audio Analysis/Features → synthesized bands for SDK mode; graceful fallbacks
+- `spotifyPlayer.js`: Web Playback SDK wrapper with activation, transfer, play/pause, position estimation
+- `visualizerLayers.js`: multi-pass renderer
+  - Background, Bass/Sub, Vocal, Treble layers → Composite
+  - Album palette/texture support
+  - Live tuning (sensitivity, smoothing, clamp, gamma) with EMA smoothing
+- `presets.js`: palette + per-layer weights for the compositor
+- `color.js`: album palette extraction
+- `app.js`: orchestrates everything and binds UI events
+- `components/*`: UI building blocks (navbar, scene selector, controls)
+- `styles/*`: project CSS and themes
 
 ## Audio paths
 
 - Microphone
   - `MediaStreamSource` → `AnalyserNode`
-- Spotify track preview
+- Preview (30s)
   - `<audio>` (preview_url) → `MediaElementSource` → `AnalyserNode`
+- SDK (full tracks)
+  - Playback via DRM; audio not accessible to Web Audio
+  - Visuals driven by analysis/features or fallback musical synth, synchronized to SDK position
 
-Note: The Spotify Web Playback SDK full tracks cannot be analyzed with Web Audio due to DRM. Luma uses preview URLs for visualization or microphone input. The SDK can still be used to control playback if you extend the app (Premium required).
+## Choreography
 
-## Themes
-
-`themes.css` sets CSS variables per time-of-day:
-- Morning: soft blues
-- Evening: golden ambers
-- Night: dark purples
-
-`app.js` applies a body class accordingly.
+- Primary triggers: beats/downbeats, energy, sections/phrases (when available)
+- Secondary modulation: vocal flux, spectral centroid/slope, treble detail (zcr)
+- Layer weights per scene control the composite look
+- UI tuning scales sensitivity/smoothing/clamping/gamma globally
 
 ## Deploy
 

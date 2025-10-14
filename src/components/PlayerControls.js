@@ -39,6 +39,7 @@ export function PlayerControls(
     <option value="sdk">Spotify (Full)</option>
     <option value="mic">Microphone</option>
   `;
+  select.value = localStorage.getItem('luma_source') || 'preview';
   select.addEventListener('change', () => onSourceChange?.(select.value));
 
   transport.appendChild(playBtn);
@@ -85,7 +86,6 @@ export function PlayerControls(
     const clampMax = parseFloat(tuning.querySelector('#clamp').value);
     const gamma = parseFloat(tuning.querySelector('#gamma').value);
     onTuningChange?.({ sensitivity, smoothing, clampMax, gamma });
-    // Persist
     localStorage.setItem('luma_tuning', JSON.stringify({ sensitivity, smoothing, clampMax, gamma }));
   }
 
@@ -103,6 +103,10 @@ export function PlayerControls(
       Use Texture
     </label>
   `;
+  const savedAlbum = JSON.parse(localStorage.getItem('luma_album_opts') || '{"useColors":true,"useTexture":true}');
+  albumOpts.querySelector('#useColors').checked = !!savedAlbum.useColors;
+  albumOpts.querySelector('#useTexture').checked = !!savedAlbum.useTexture;
+
   albumOpts.querySelector('#useColors').addEventListener('change', emitAlbum);
   albumOpts.querySelector('#useTexture').addEventListener('change', emitAlbum);
 
@@ -141,7 +145,7 @@ export function PlayerControls(
   el.appendChild(row1);
   el.appendChild(results);
 
-  // Load persisted tuning/options
+  // Load persisted tuning
   const savedTuning = JSON.parse(localStorage.getItem('luma_tuning') || 'null');
   if (savedTuning) {
     tuning.querySelector('#sens').value = String(savedTuning.sensitivity ?? 0.85);
@@ -149,12 +153,6 @@ export function PlayerControls(
     tuning.querySelector('#clamp').value = String(savedTuning.clampMax ?? 0.9);
     tuning.querySelector('#gamma').value = String(savedTuning.gamma ?? 0.85);
     emitTuning();
-  }
-  const savedAlbum = JSON.parse(localStorage.getItem('luma_album_opts') || 'null');
-  if (savedAlbum) {
-    albumOpts.querySelector('#useColors').checked = !!savedAlbum.useColors;
-    albumOpts.querySelector('#useTexture').checked = !!savedAlbum.useTexture;
-    emitAlbum();
   }
 
   async function runSearch() {

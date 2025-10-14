@@ -7,8 +7,6 @@
   <meta name="description" content="Luma is a Spotify-connected, audio-reactive visualization and meditation web app." />
   <link rel="manifest" href="./manifest.json" />
   <link rel="icon" href="./public/favicon.ico" />
-
-  <!-- No Tailwind CDN (production safe) -->
   <link rel="stylesheet" href="./src/styles/main.css" />
   <link rel="stylesheet" href="./src/styles/themes.css" />
 </head>
@@ -21,7 +19,6 @@
     <div class="max-w-6xl mx-auto px-4 py-3 flex flex-col gap-3">
       <!-- Player Controls -->
       <section id="player-controls" class="bg-white/10 backdrop-blur-sm rounded-xl p-3 shadow-glow"></section>
-
       <!-- Scene / Preset Selector -->
       <section id="scene-selector" class="bg-white/10 backdrop-blur-sm rounded-xl p-3 shadow-glow"></section>
     </div>
@@ -33,13 +30,19 @@
   <!-- Hidden audio element for preview or local playback -->
   <audio id="audio-el" crossorigin="anonymous" hidden></audio>
 
-  <!-- Ensure SDK callback exists before the SDK loads -->
+  <!-- Spotify Web Playback SDK -->
   <script>
     window.onSpotifyWebPlaybackSDKReady = function() {
       window.dispatchEvent(new Event('spotify-sdk-ready'));
     };
   </script>
   <script src="https://sdk.scdn.co/spotify-player.js"></script>
+
+  <!-- Three.js (module) -->
+  <script type="module">
+    // Preload Three.js module early for faster first frame
+    import 'https://unpkg.com/three@0.160.0/build/three.module.js';
+  </script>
 
   <!-- App entry -->
   <script type="module" src="./src/scripts/app.js"></script>

@@ -1,6 +1,6 @@
 {
   "name": "luma",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "description": "Spotify-connected, audio-reactive visualization and meditation web app.",
   "scripts": {
@@ -13,7 +13,8 @@
     "threejs",
     "web-audio",
     "glsl",
-    "meditation"
+    "meditation",
+    "web-playback-sdk"
   ],
   "author": "belisario-afk",
   "license": "MIT"

@@ -49,10 +49,7 @@ export class AnalysisEngine {
     this._fallback = true;
   }
 
-  _norm(val, { min, max }) {
-    if (max === min) return 0;
-    return Math.min(1, Math.max(0, (val - min) / (max - min)));
-  }
+  _norm(val, { min, max }) { if (max === min) return 0; return Math.min(1, Math.max(0, (val - min) / (max - min))); }
 
   _bandsFromFeatures(positionMs) {
     const f = this._features;

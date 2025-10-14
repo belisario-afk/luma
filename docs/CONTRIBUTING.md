@@ -1,11 +1,11 @@
 # Contributing to Luma
 
-Thanks for your interest in contributing!
+Thanks for your interest in contributing! This project is a static, production-ready visualizer.
 
 ## Ways to contribute
 
-- Add or improve visual presets
-- Create new shaders
+- Add or improve layered scenes
+- Create new GLSL layer shaders (background/bass/vocal/treble/composite)
 - Improve UI/UX or accessibility
 - Add integrations (e.g., Philips Hue, Nanoleaf, WebXR)
 
@@ -16,43 +16,26 @@ Thanks for your interest in contributing!
   - or `npx serve -p 5173 .`
 - Open http://localhost:5173/luma/
 
-Note: Spotify login callback is only configured for the production URL. Locally, you can test microphone input and visual presets.
+Note: Spotify login callback is configured for the production URL. Locally, use Microphone or Preview mode (SDK mode requires Premium and will only fully function on the configured redirect domain).
 
-## Adding a new preset
+## Scene authoring guidelines
 
-1) Create your fragment shader in `src/assets/shaders/yourPreset.glsl`
-2) Add a preset entry in `src/scripts/presets.js`:
-```js
-{
-  id: "your-id",
-  name: "Your Name",
-  description: "Short description",
-  shader: "yourPreset.glsl",
-  params: {
-    // optional floats and colors
-    yourFloat: 0.5,
-    color1: "#ffffff",
-    color2: "#000000"
-  },
-  audioMap: {
-    // optionally map bass/mid/treble to a param name
-    bass: "yourFloat"
-  }
-}
-```
-3) Reference params inside your shader using the existing uniforms:
-- `uTime`, `uResolution`
-- `uBass`, `uMid`, `uTreble`
-- `uColor1`, `uColor2`
-- `uParam1..uParam4` for generic floats
-
-4) Test the preset by selecting it from the Scenes picker.
+- Scenes are layered via `src/scripts/visualizerLayers.js` using four layer fragment shaders plus a composite.
+- Each scene config lives in `src/scripts/presets.js` as a palette and per-layer weight multipliers.
+- Album-aware theming:
+  - Colors come from the album cover via `extractPaletteFromImage`.
+  - Texture (album cover) is optionally sampled in background/aurora-like layers; keep it subtle.
+- Reactivity drivers available in shader uniforms:
+  - uSub, uBass, uLowMid, uMid, uHighMid, uTreble
+  - uVocal, uEnergy, uCentroid, uFlux (spectral flux), uZcr (zero-cross rate), uBeat
+  - uColor1, uColor2 (base palette), uAlbumAvg, uAlbumTex, uAlbumOn
+  - uTime, uResolution
 
 ## Coding guidelines
 
 - Vanilla ES modules only; keep dependencies minimal
-- Keep functions small and well-commented
-- Prefer pure functions and simple data structures
-- Document any non-obvious math in shaders
+- Keep GLSL numerically stable and avoid overdraw-heavy effects
+- Avoid harsh flashing; clamp outputs and use smoothing
+- Document the intent of complex maths directly in shader comments
 
 Thanks again for contributing!

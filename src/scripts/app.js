@@ -29,13 +29,13 @@ const audio = new AudioEngine();
 let viz = null;
 
 let currentPreset = presets[0];
-let sourceMode = 'preview'; // 'preview' | 'sdk' | 'mic'
+let sourceMode = localStorage.getItem('luma_source') || 'preview'; // 'preview' | 'sdk' | 'mic'
 let pendingSdkUri = null;
 
 const sdk = new SpotifyPlayerController({ getAccessToken });
 const analysis = new AnalysisEngine();
 
-const albumOptions = { useColors: true, useTexture: true };
+const albumOptions = JSON.parse(localStorage.getItem('luma_album_opts') || '{"useColors":true,"useTexture":true}');
 
 function applyThemeByTime() {
   const hour = new Date().getHours();
@@ -74,11 +74,20 @@ async function initVisualizer() {
   viz?.dispose();
   viz = new Visualizer({ container: dom.canvasRoot });
   await viz.init();
+
+  // Restore last preset
+  const savedPresetId = localStorage.getItem('luma_preset');
+  if (savedPresetId) {
+    const p = presets.find(x => x.id === savedPresetId);
+    if (p) currentPreset = p;
+  }
   await viz.loadPreset(currentPreset);
-  viz.setAudioGetter(() => audio.getBands());
+
   // Restore tuning
   const savedTuning = JSON.parse(localStorage.getItem('luma_tuning') || 'null');
   if (savedTuning) viz.setTuning(savedTuning);
+
+  viz.setAudioGetter(() => audio.getBands());
   viz.start();
 }
 
@@ -225,20 +234,20 @@ function setupComponents() {
     onAlbumOptions: async ({ useColors, useTexture }) => {
       albumOptions.useColors = !!useColors;
       albumOptions.useTexture = !!useTexture;
-      // Reapplied on next track selection; texture/color can be cleared immediately if disabled.
+      localStorage.setItem('luma_album_opts', JSON.stringify(albumOptions));
       if (!useColors) viz.setAlbumColors({ primary: null, secondary: null, avg: null }, false);
       if (!useTexture) await viz.setAlbumTexture(null);
     }
   });
 
-  // Restore last selection
-  const savedPresetId = localStorage.getItem('luma_preset');
-  if (savedPresetId) {
-    const p = presets.find(x => x.id === savedPresetId);
-    if (p) { currentPreset = p; viz.loadPreset(currentPreset); }
+  // Apply saved source mode effect on load (doesn't auto play)
+  if (sourceMode === 'mic') {
+    // do nothing until user enables mic via source toggle
+  } else if (sourceMode === 'sdk' && spotify.token) {
+    viz.setAudioGetter(() => analysis.getBandsAt(sdk.getApproxPositionMs()));
+  } else {
+    viz.setAudioGetter(() => audio.getBands());
   }
-  const savedSource = localStorage.getItem('luma_source');
-  if (savedSource) sourceMode = savedSource;
 }
 
 function setupInactivityUI() { ui.initInactivity(); }
