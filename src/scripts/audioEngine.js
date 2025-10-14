@@ -21,6 +21,10 @@ export class AudioEngine {
     };
 
     this.sampleRate = 44100; // will be updated after context init
+
+    // Cache a single MediaElementSourceNode per HTMLMediaElement
+    this._mediaElement = null;
+    this._mediaElementSource = null;
   }
 
   async init() {
@@ -63,19 +67,33 @@ export class AudioEngine {
   }
 
   async connectToMic() {
-    // Do NOT auto-resume here; ensureRunning should be called from a user gesture (e.g., Play/Mic button).
     await this.init();
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
     const src = this.ctx.createMediaStreamSource(stream);
+    this._mediaElement = null; // no longer using element source
+    this._mediaElementSource = null;
     this.connectNode(src);
     return true;
   }
 
   async connectToAudioElement(audioEl) {
-    // Do NOT auto-resume here; resume is triggered by UI on user interaction.
     await this.init();
-    const srcNode = this.ctx.createMediaElementSource(audioEl);
-    this.connectNode(srcNode);
+
+    // Reuse an existing MediaElementSource for the same element; only one is allowed.
+    if (this._mediaElementSource && this._mediaElement === audioEl) {
+      this.connectNode(this._mediaElementSource);
+      return true;
+    }
+
+    if (this._mediaElementSource && this._mediaElement !== audioEl) {
+      try { this._mediaElementSource.disconnect(); } catch {}
+      this._mediaElementSource = null;
+      this._mediaElement = null;
+    }
+
+    this._mediaElement = audioEl;
+    this._mediaElementSource = this.ctx.createMediaElementSource(audioEl);
+    this.connectNode(this._mediaElementSource);
     return true;
   }
 

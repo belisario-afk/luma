@@ -2,7 +2,7 @@
 
 export class SpotifyPlayerController {
   constructor({ getAccessToken }) {
-    this.getAccessToken = getAccessToken; // function returning a fresh token
+    this.getAccessToken = getAccessToken; // async function returning a fresh token
     this.player = null;
     this.deviceId = null;
     this.ready = false;
@@ -10,13 +10,14 @@ export class SpotifyPlayerController {
     this._lastState = null;
     this._lastStateTimestamp = 0;
     this._stateListeners = new Set();
+
+    this._activated = false;
   }
 
   async init() {
     if (this.player) return;
 
     if (!window.Spotify) {
-      // Wait for SDK ready event
       await new Promise(resolve => {
         const handler = () => {
           window.removeEventListener('spotify-sdk-ready', handler);
@@ -59,6 +60,17 @@ export class SpotifyPlayerController {
     await this.player.connect();
   }
 
+  // Must be called in a user-gesture event (e.g., Play click) for audio to start
+  async activate() {
+    if (!this.player || this._activated) return;
+    try {
+      await this.player.activateElement();
+      this._activated = true;
+    } catch {
+      // no-op
+    }
+  }
+
   onStateChanged(cb) {
     this._stateListeners.add(cb);
     return () => this._stateListeners.delete(cb);
@@ -73,18 +85,26 @@ export class SpotifyPlayerController {
     return s.paused ? base : base + delta;
   }
 
-  async transferPlayback() {
+  async transferPlayback({ play = false } = {}) {
     const token = await this.getAccessToken();
     if (!token || !this.deviceId) throw new Error('Player not ready');
 
-    await fetch('https://api.spotify.com/v1/me/player', {
+    const res = await fetch('https://api.spotify.com/v1/me/player', {
       method: 'PUT',
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ device_ids: [this.deviceId], play: false })
+      body: JSON.stringify({ device_ids: [this.deviceId], play })
     });
+
+    if (!res.ok && res.status !== 204) {
+      const text = await res.text().catch(() => '');
+      if (res.status === 403) {
+        throw new Error('Spotify Premium is required for SDK playback.');
+      }
+      throw new Error(`Transfer failed: ${res.status} ${text}`);
+    }
   }
 
   async playTrackUri(uri, position_ms = 0) {
@@ -102,6 +122,7 @@ export class SpotifyPlayerController {
     });
     if (!res.ok && res.status !== 204) {
       const t = await res.text().catch(() => '');
+      if (res.status === 403) throw new Error('Spotify Premium required for full-track playback.');
       throw new Error(`Failed to start playback: ${res.status} ${t}`);
     }
   }

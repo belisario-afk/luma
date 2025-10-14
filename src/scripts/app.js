@@ -77,7 +77,7 @@ async function initAuth() {
     profile: spotify.profile
   });
 
-  // If token exists, initialize SDK in background
+  // If token exists, initialize SDK (no audio until activate on user gesture)
   if (spotify.token) {
     try {
       await sdk.init();
@@ -139,8 +139,7 @@ function setupComponents() {
         }
         try {
           await sdk.init();
-          await sdk.transferPlayback();
-          // In SDK mode, visuals are driven by Audio Analysis + SDK position
+          // Do NOT transfer yet; wait for a user gesture (Play click) to call activate() and transfer.
           viz.setAudioGetter(() => analysis.getBandsAt(sdk.getApproxPositionMs()));
           ui.toast('Spotify SDK mode (full track)');
         } catch (e) {
@@ -181,11 +180,18 @@ function setupComponents() {
         }
 
         if (sourceMode === 'sdk') {
-          // Load analysis for visuals, then start full-track playback via SDK
-          await analysis.load(item.id, spotify.token);
+          // Load analysis or features for visuals
+          try {
+            await analysis.load(item.id, spotify.token);
+          } catch (e) {
+            console.warn(e);
+            ui.toast('Using features-based visuals (analysis unavailable)', 'info');
+          }
           await sdk.init();
-          await sdk.transferPlayback();
-          await sdk.playTrackUri(item.uri, 0);
+          ui.toast('Ready to play via Spotify SDK. Click Play.', 'info');
+          // Actual playback will start on Play click (user gesture)
+          // which will activate the SDK element and transfer playback.
+          // Visual getter already set in onSourceChange.
         } else if (sourceMode === 'preview') {
           const url = await audio.setSpotifyTrackById(item.id, spotify.token, dom.audioEl);
           await audio.ensureRunning();
@@ -196,12 +202,19 @@ function setupComponents() {
         }
       } catch (e) {
         console.error(e);
-        ui.toast(e.message || 'Unable to play track', 'error');
+        ui.toast(e.message || 'Unable to handle track selection', 'error');
       }
     },
     onPlay: async () => {
       try {
         if (sourceMode === 'sdk') {
+          await sdk.activate(); // must be in user gesture
+          try {
+            await sdk.transferPlayback({ play: true });
+          } catch (e) {
+            ui.toast(e.message, 'error');
+            return;
+          }
           await sdk.resume();
         } else {
           await audio.ensureRunning();
