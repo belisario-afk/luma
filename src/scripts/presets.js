@@ -1,77 +1,41 @@
-// presets.js - Real scenes: each preset supplies its own layerSet (unique shaders)
-// so scenes look and move differently, not just color/weights.
+// presets.js — add Dropper Pack presets that use dedicated composite shaders.
+// Each uses blank layers for BG/Bass/Vocal/Treble and renders entirely in the composite.
 
 const L = (file) => `../assets/shaders/layers/${file}`;
+const D = (file) => `../assets/shaders/dropper/${file}`;
 
 export const presets = [
+  // Dropper pack
   {
-    id: "zen-particles",
-    name: "Zen Particles",
-    description: "Calming particle-like flow and soft bokeh sparkles.",
-    params: { color1: "#AEE6FF", color2: "#CAB9FF" },
-    layerWeights: { bass: 0.7, vocal: 0.6, treble: 0.9 },
-    layerSet: {
-      bg:    L('background_mistGradient.glsl'),
-      bass:  L('bass_concentricRipples.glsl'),
-      vocal: L('vocal_ribbons.glsl'),
-      treble:L('treble_bokeh.glsl'),
-      comp:  L('composite_softBloom.glsl')
-    }
+    id: "dropper-spiral-tunnel",
+    name: "Spiral Tunnel",
+    description: "Rainbow dash spiral with beat pulses and bass-driven spin.",
+    params: { color1: "#ff7fd1", color2: "#7fe3ff" },
+    layerWeights: { bass: 1, vocal: 1, treble: 1 },
+    layerSet: { bg: L('blank.glsl'), bass: L('blank.glsl'), vocal: L('blank.glsl'), treble: L('blank.glsl'), comp: D('spiralTunnel.glsl') }
   },
   {
-    id: "aurora-curtains",
-    name: "Aurora Curtains",
-    description: "Volumetric nebula with flowing curtains; airy and smooth.",
-    params: { color1: "#7fe3ff", color2: "#b987ff" },
-    layerWeights: { bass: 0.6, vocal: 1.0, treble: 0.6 },
-    layerSet: {
-      bg:    L('background_softNebula.glsl'),
-      bass:  L('bass_shockWaves.glsl'),
-      vocal: L('vocal_kaleidoCurtains.glsl'),
-      treble:L('treble_starfield.glsl'),
-      comp:  L('composite_softBloom.glsl')
-    }
+    id: "dropper-dot-kaleido",
+    name: "Dot Kaleido Dome",
+    description: "Dense mirrored dot constellations; vocal/flux animate density.",
+    params: { color1: "#ffd06a", color2: "#8ab6ff" },
+    layerWeights: { bass: 1, vocal: 1, treble: 1 },
+    layerSet: { bg: L('blank.glsl'), bass: L('blank.glsl'), vocal: L('blank.glsl'), treble: L('blank.glsl'), comp: D('dotKaleido.glsl') }
   },
   {
-    id: "eclipse-rings",
-    name: "Eclipse Rings",
-    description: "Concentric orbits, downbeat shocks, dark glow composite.",
-    params: { color1: "#ffcc7a", color2: "#2b2b46" },
-    layerWeights: { bass: 1.2, vocal: 0.5, treble: 0.8 },
-    layerSet: {
-      bg:    L('background_mistGradient.glsl'),
-      bass:  L('bass_shockWaves.glsl'),
-      vocal: L('vocal_ribbons.glsl'),
-      treble:L('treble_starfield.glsl'),
-      comp:  L('composite_darkGlow.glsl')
-    }
+    id: "dropper-pixel-burst",
+    name: "Pixel Burst Tunnel",
+    description: "Radial voxel rays with treble-driven pixel grid and beat glitches.",
+    params: { color1: "#ff61b6", color2: "#61d0ff" },
+    layerWeights: { bass: 1, vocal: 1, treble: 1 },
+    layerSet: { bg: L('blank.glsl'), bass: L('blank.glsl'), vocal: L('blank.glsl'), treble: L('blank.glsl'), comp: D('pixelBurstTunnel.glsl') }
   },
   {
-    id: "liquid-neon",
-    name: "Liquid Neon",
-    description: "Holographic grid energy; bright and modern.",
-    params: { color1: "#33d0ff", color2: "#ff33cc" },
-    layerWeights: { bass: 0.8, vocal: 0.8, treble: 1.1 },
-    layerSet: {
-      bg:    L('background_softNebula.glsl'),
-      bass:  L('bass_concentricRipples.glsl'),
-      vocal: L('vocal_kaleidoCurtains.glsl'),
-      treble:L('treble_bokeh.glsl'),
-      comp:  L('composite_softBloom.glsl')
-    }
-  },
-  {
-    id: "misty-isles",
-    name: "Misty Isles",
-    description: "Parallax mist + sparse stars; very gentle motion.",
-    params: { color1: "#b0c4de", color2: "#e6e6f0" },
-    layerWeights: { bass: 0.5, vocal: 0.6, treble: 0.5 },
-    layerSet: {
-      bg:    L('background_mistGradient.glsl'),
-      bass:  L('bass_concentricRipples.glsl'),
-      vocal: L('vocal_ribbons.glsl'),
-      treble:L('treble_starfield.glsl'),
-      comp:  L('composite_softBloom.glsl')
-    }
+    id: "dropper-kaleido-cave",
+    name: "Kaleido Cave",
+    description: "Textured kaleidoscopic stone pattern; energy lifts relief.",
+    params: { color1: "#d29cff", color2: "#7fe3ff" },
+    layerWeights: { bass: 1, vocal: 1, treble: 1 },
+    layerSet: { bg: L('blank.glsl'), bass: L('blank.glsl'), vocal: L('blank.glsl'), treble: L('blank.glsl'), comp: D('caveKaleido.glsl') }
   }
 ];
