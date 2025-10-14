@@ -180,22 +180,18 @@ function setupComponents() {
         }
 
         if (sourceMode === 'sdk') {
-          // Load analysis or features for visuals
           try {
             await analysis.load(item.id, spotify.token);
-          } catch (e) {
-            console.warn(e);
-            ui.toast('Using features-based visuals (analysis unavailable)', 'info');
+          } catch {
+            // With new AnalysisEngine, load never throws. Keeping this for safety.
           }
           await sdk.init();
-          ui.toast('Ready to play via Spotify SDK. Click Play.', 'info');
-          // Actual playback will start on Play click (user gesture)
-          // which will activate the SDK element and transfer playback.
-          // Visual getter already set in onSourceChange.
+          ui.toast('SDK ready. Click Play to start.', 'info');
+          // playback happens in onPlay()
         } else if (sourceMode === 'preview') {
           const url = await audio.setSpotifyTrackById(item.id, spotify.token, dom.audioEl);
           await audio.ensureRunning();
-          await dom.audioEl.play(); // gesture already happened via click
+          await dom.audioEl.play();
           viz.setAudioGetter(() => audio.getBands());
         } else if (sourceMode === 'mic') {
           ui.toast('Mic mode active. Switch to Preview/Spotify to play tracks.');
