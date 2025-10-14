@@ -85,6 +85,8 @@ export function PlayerControls(
     const clampMax = parseFloat(tuning.querySelector('#clamp').value);
     const gamma = parseFloat(tuning.querySelector('#gamma').value);
     onTuningChange?.({ sensitivity, smoothing, clampMax, gamma });
+    // Persist
+    localStorage.setItem('luma_tuning', JSON.stringify({ sensitivity, smoothing, clampMax, gamma }));
   }
 
   // Album options
@@ -108,6 +110,7 @@ export function PlayerControls(
     const useColors = albumOpts.querySelector('#useColors').checked;
     const useTexture = albumOpts.querySelector('#useTexture').checked;
     onAlbumOptions?.({ useColors, useTexture });
+    localStorage.setItem('luma_album_opts', JSON.stringify({ useColors, useTexture }));
   }
 
   // Search
@@ -117,11 +120,7 @@ export function PlayerControls(
   input.className = 'search';
   input.type = 'search';
   input.placeholder = 'Search Spotify tracks...';
-  input.addEventListener('keydown', async (e) => {
-    if (e.key === 'Enter') {
-      await runSearch();
-    }
-  });
+  input.addEventListener('keydown', async (e) => { if (e.key === 'Enter') await runSearch(); });
 
   const goBtn = document.createElement('button');
   goBtn.className = 'ghost ml-2';
@@ -142,6 +141,22 @@ export function PlayerControls(
   el.appendChild(row1);
   el.appendChild(results);
 
+  // Load persisted tuning/options
+  const savedTuning = JSON.parse(localStorage.getItem('luma_tuning') || 'null');
+  if (savedTuning) {
+    tuning.querySelector('#sens').value = String(savedTuning.sensitivity ?? 0.85);
+    tuning.querySelector('#smooth').value = String(savedTuning.smoothing ?? 0.65);
+    tuning.querySelector('#clamp').value = String(savedTuning.clampMax ?? 0.9);
+    tuning.querySelector('#gamma').value = String(savedTuning.gamma ?? 0.85);
+    emitTuning();
+  }
+  const savedAlbum = JSON.parse(localStorage.getItem('luma_album_opts') || 'null');
+  if (savedAlbum) {
+    albumOpts.querySelector('#useColors').checked = !!savedAlbum.useColors;
+    albumOpts.querySelector('#useTexture').checked = !!savedAlbum.useTexture;
+    emitAlbum();
+  }
+
   async function runSearch() {
     const q = input.value;
     results.innerHTML = '';
@@ -158,9 +173,7 @@ export function PlayerControls(
         <div class="text-[10px] text-[color:var(--muted)]">${item.hasPreview ? 'Preview OK' : 'No Preview'}</div>
       `;
       card.style.cursor = 'pointer';
-      card.addEventListener('click', async () => {
-        await onSelectTrack?.(item);
-      });
+      card.addEventListener('click', async () => { await onSelectTrack?.(item); });
       results.appendChild(card);
     });
   }

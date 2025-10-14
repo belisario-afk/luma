@@ -1,6 +1,6 @@
-// audioEngine.js - Web Audio API logic
-// Adds energy, spectral centroid, and beat pulse detection.
-// Exports normalized bands and metrics: bass, mid, treble, energy, centroid(0..1), beatPulse(0..1)
+// audioEngine.js - Extended metrics + robust source handling
+// Exports extended bands (sub/bass/lowMid/mid/highMid/treble) + vocal,
+// and derived metrics: energy, centroid, spectralFlux, zcr, beatPulse.
 
 export class AudioEngine {
   constructor() {
@@ -8,6 +8,7 @@ export class AudioEngine {
     this.analyser = null;
     this.sourceNode = null;
     this.freqData = null;
+    this.prevMag = null;
     this.timeData = null;
     this.ready = false;
 
@@ -15,22 +16,25 @@ export class AudioEngine {
     this.smoothingTimeConstant = 0.85;
 
     this.bandRanges = {
-      bass: [20, 140],
-      mid: [140, 2000],
-      treble: [2000, 11025]
+      sub: [20, 60],
+      bass: [60, 160],
+      lowMid: [160, 400],
+      mid: [400, 2000],
+      highMid: [2000, 6000],
+      treble: [6000, 11025],
+      vocal: [1000, 4000]
     };
 
     this.sampleRate = 44100;
 
-    // Cache a single MediaElementSourceNode per HTMLMediaElement
     this._mediaElement = null;
     this._mediaElementSource = null;
 
-    // Beat detection buffers and state
-    this._energyHistory = new Float32Array(64); // ~1s at 60fps-ish calls
+    // Beat detection ring buffer
+    this._energyHistory = new Float32Array(64);
     this._energyIdx = 0;
     this._energyFilled = false;
-    this._beatPulse = 0; // decaying pulse 0..1
+    this._beatPulse = 0;
     this._lastTs = performance.now();
   }
 
@@ -46,6 +50,7 @@ export class AudioEngine {
 
     const bufferLength = this.analyser.frequencyBinCount;
     this.freqData = new Uint8Array(bufferLength);
+    this.prevMag = new Float32Array(bufferLength);
     this.timeData = new Uint8Array(this.analyser.fftSize);
 
     this.ready = true;
@@ -65,9 +70,7 @@ export class AudioEngine {
 
   disconnect() {
     if (this.sourceNode) {
-      try {
-        this.sourceNode.disconnect();
-      } catch {}
+      try { this.sourceNode.disconnect(); } catch {}
       this.sourceNode = null;
     }
   }
@@ -91,13 +94,11 @@ export class AudioEngine {
   async connectToAudioElement(audioEl) {
     await this.init();
 
-    // Reuse existing source node if same element
     if (this._mediaElementSource && this._mediaElement === audioEl) {
       this.connectNode(this._mediaElementSource);
       return true;
     }
 
-    // Otherwise detach previous and create a new MESN
     if (this._mediaElementSource && this._mediaElement !== audioEl) {
       try { this._mediaElementSource.disconnect(); } catch {}
       this._mediaElementSource = null;
@@ -131,15 +132,20 @@ export class AudioEngine {
     return Math.min(Math.max(index, 0), this.analyser.frequencyBinCount - 1);
   }
 
-  _computeEnergyAndCentroid() {
-    // Energy: normalized average magnitude
+  _segmentAvg(lowHz, highHz) {
+    const start = this._freqToIndex(lowHz);
+    const end = this._freqToIndex(highHz);
+    let sum = 0, n = Math.max(0, end - start);
+    for (let i = start; i < end; i++) sum += this.freqData[i];
+    return n ? (sum / (255 * n)) : 0;
+  }
+
+  _computeEnergyCentroid() {
     let sum = 0;
     for (let i = 0; i < this.freqData.length; i++) sum += this.freqData[i];
     const energy = (sum / (255 * this.freqData.length)) || 0;
 
-    // Spectral centroid (Hz normalized 0..1)
-    let num = 0;
-    let den = 0;
+    let num = 0, den = 0;
     const nyquist = this.sampleRate / 2;
     for (let i = 0; i < this.freqData.length; i++) {
       const mag = this.freqData[i];
@@ -152,8 +158,30 @@ export class AudioEngine {
     return { energy, centroid };
   }
 
+  _computeSpectralFlux() {
+    let flux = 0;
+    for (let i = 0; i < this.freqData.length; i++) {
+      const mag = this.freqData[i] / 255;
+      const diff = mag - this.prevMag[i];
+      if (diff > 0) flux += diff;
+      this.prevMag[i] = mag;
+    }
+    return Math.min(1, flux / (this.freqData.length * 0.1));
+  }
+
+  _computeZCR() {
+    this.analyser.getByteTimeDomainData(this.timeData);
+    let z = 0;
+    let prev = this.timeData[0] - 128;
+    for (let i = 1; i < this.timeData.length; i++) {
+      const cur = this.timeData[i] - 128;
+      if ((prev >= 0 && cur < 0) || (prev < 0 && cur >= 0)) z++;
+      prev = cur;
+    }
+    return Math.min(1, z / this.timeData.length);
+  }
+
   _updateBeat(energy) {
-    // Update ring buffer
     this._energyHistory[this._energyIdx++] = energy;
     if (this._energyIdx >= this._energyHistory.length) {
       this._energyIdx = 0;
@@ -161,9 +189,8 @@ export class AudioEngine {
     }
 
     const len = this._energyFilled ? this._energyHistory.length : this._energyIdx;
-    if (len < 8) return this._beatPulse; // not enough data yet
+    if (len < 8) return this._beatPulse;
 
-    // Mean and stdev over window
     let mean = 0;
     for (let i = 0; i < len; i++) mean += this._energyHistory[i];
     mean /= len;
@@ -175,22 +202,16 @@ export class AudioEngine {
     }
     variance /= len;
     const stdev = Math.sqrt(variance);
-
-    const threshold = mean + 1.5 * stdev; // sensitivity factor
+    const threshold = mean + 1.5 * stdev;
     const isBeat = energy > threshold && energy > 0.1;
 
     const now = performance.now();
-    const dt = Math.max(1, now - this._lastTs) / 1000; // seconds
+    const dt = Math.max(1, now - this._lastTs) / 1000;
     this._lastTs = now;
 
-    // Decay pulse
-    const decay = 2.5; // per second
+    const decay = 2.5;
     this._beatPulse = Math.max(0, this._beatPulse - decay * dt);
-
-    if (isBeat) {
-      this._beatPulse = Math.min(1, this._beatPulse + 0.9);
-    }
-
+    if (isBeat) this._beatPulse = Math.min(1, this._beatPulse + 0.9);
     return this._beatPulse;
   }
 
@@ -198,40 +219,34 @@ export class AudioEngine {
     if (!this.analyser || !this.freqData) {
       return {
         raw: [],
-        bass: { values: [], avg: 0 },
-        mid: { values: [], avg: 0 },
-        treble: { values: [], avg: 0 },
-        energy: 0,
-        centroid: 0,
-        beatPulse: 0
+        sub: { avg: 0 }, bass: { avg: 0 }, lowMid: { avg: 0 }, mid: { avg: 0 }, highMid: { avg: 0 }, treble: { avg: 0 },
+        vocal: { avg: 0 }, energy: 0, centroid: 0, spectralFlux: 0, zcr: 0, beatPulse: 0
       };
     }
 
     this.analyser.getByteFrequencyData(this.freqData);
 
-    const segment = (lowHz, highHz) => {
-      const start = this._freqToIndex(lowHz);
-      const end = this._freqToIndex(highHz);
-      const sub = this.freqData.slice(start, end);
-      const norm = Array.from(sub, v => v / 255);
-      const avg = norm.length ? norm.reduce((a, b) => a + b, 0) / norm.length : 0;
-      return { values: norm, avg };
-    };
+    const sub = { avg: this._segmentAvg(...this.bandRanges.sub) };
+    const bass = { avg: this._segmentAvg(...this.bandRanges.bass) };
+    const lowMid = { avg: this._segmentAvg(...this.bandRanges.lowMid) };
+    const mid = { avg: this._segmentAvg(...this.bandRanges.mid) };
+    const highMid = { avg: this._segmentAvg(...this.bandRanges.highMid) };
+    const treble = { avg: this._segmentAvg(...this.bandRanges.treble) };
+    const vocal = { avg: this._segmentAvg(...this.bandRanges.vocal) };
 
-    const bands = {
-      raw: this.freqData,
-      bass: segment(...this.bandRanges.bass),
-      mid: segment(...this.bandRanges.mid),
-      treble: segment(...this.bandRanges.treble)
-    };
-
-    const { energy, centroid } = this._computeEnergyAndCentroid();
+    const { energy, centroid } = this._computeEnergyCentroid();
+    const spectralFlux = this._computeSpectralFlux();
+    const zcr = this._computeZCR();
     const beatPulse = this._updateBeat(energy);
 
     return {
-      ...bands,
+      raw: this.freqData,
+      sub, bass, lowMid, mid, highMid, treble,
+      vocal,
       energy,
       centroid,
+      spectralFlux,
+      zcr,
       beatPulse
     };
   }

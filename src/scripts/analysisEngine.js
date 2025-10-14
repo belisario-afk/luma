@@ -1,34 +1,21 @@
-// analysisEngine.js - Uses Spotify Audio Analysis to synthesize band data in SDK mode
-// Fallbacks:
-//  - If /audio-analysis 403 → try /audio-features
-//  - If that also fails → deterministic time-based synth (no network needed)
+// analysisEngine.js - Analysis/Features → synthetic bands for SDK mode
+// Includes ultimate time-based fallback if API access is restricted.
 
 export class AnalysisEngine {
   constructor() {
     this.analysis = null;
     this._segments = [];
     this._minmax = null;
-
-    // features fallback
     this._features = null;
-
-    // ultimate fallback (no network)
     this._fallback = false;
-
-    // smoothing
     this._last = { bass: 0, mid: 0, treble: 0 };
     this._alpha = 0.2;
   }
 
   async load(trackId, token) {
-    this.analysis = null;
-    this._segments = [];
-    this._minmax = null;
-    this._features = null;
-    this._fallback = false;
+    this.analysis = null; this._segments = []; this._minmax = null; this._features = null; this._fallback = false;
     this._last = { bass: 0, mid: 0, treble: 0 };
 
-    // Try full analysis
     try {
       const ares = await fetch(`https://api.spotify.com/v1/audio-analysis/${trackId}`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -37,10 +24,8 @@ export class AnalysisEngine {
         const data = await ares.json();
         this.analysis = data;
         this._segments = (data.segments || []).map(s => ({
-          start: s.start * 1000,
-          duration: s.duration * 1000,
-          loudness_max: s.loudness_max,
-          timbre: s.timbre || Array(12).fill(0)
+          start: s.start * 1000, duration: s.duration * 1000,
+          loudness_max: s.loudness_max, timbre: s.timbre || Array(12).fill(0)
         }));
         const l = this._segments.map(s => s.loudness_max);
         const t9 = this._segments.map(s => s.timbre[9] ?? 0);
@@ -51,7 +36,6 @@ export class AnalysisEngine {
       }
     } catch {}
 
-    // Try features fallback
     try {
       const fres = await fetch(`https://api.spotify.com/v1/audio-features/${trackId}`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -62,7 +46,6 @@ export class AnalysisEngine {
       }
     } catch {}
 
-    // Last resort: internal time-based synth (no throw)
     this._fallback = true;
   }
 
@@ -71,7 +54,6 @@ export class AnalysisEngine {
     return Math.min(1, Math.max(0, (val - min) / (max - min)));
   }
 
-  // Features-based synthetic bands
   _bandsFromFeatures(positionMs) {
     const f = this._features;
     const tempo = f?.tempo || 120;
@@ -89,54 +71,62 @@ export class AnalysisEngine {
     return { bass, mid, treble };
   }
 
-  // Pure time-based synth when no API data available
   _bandsFromTime(positionMs) {
     const t = positionMs / 1000;
-    const bass = 0.5 + 0.5 * Math.sin(t * 2.0);   // 2 Hz
+    const bass = 0.5 + 0.5 * Math.sin(t * 2.0);
     const mid = 0.5 + 0.5 * Math.sin(t * 0.7 + 1.3);
     const treble = 0.5 + 0.5 * Math.sin(t * 5.0 + 0.7);
     return { bass: Math.abs(bass), mid: Math.abs(mid), treble: Math.abs(treble) };
   }
 
   getBandsAt(positionMs) {
-    // Full analysis path
     if (this._segments.length && this._minmax) {
       const seg = this._segments.find(s => positionMs >= s.start && positionMs < s.start + s.duration)
                 || this._segments[this._segments.length - 1];
-
       const energy = this._norm(seg.loudness_max, this._minmax.loud);
       const brightness = this._norm(seg.timbre[9] ?? 0, this._minmax.bright);
       const warmth = this._norm(seg.timbre[1] ?? 0, this._minmax.warm);
-
       const a = this._alpha;
       const bass = this._last.bass = (1 - a) * this._last.bass + a * warmth;
       const mid = this._last.mid = (1 - a) * this._last.mid + a * energy;
       const treble = this._last.treble = (1 - a) * this._last.treble + a * brightness;
-
-      return { raw: [], bass: { values: [bass], avg: bass }, mid: { values: [mid], avg: mid }, treble: { values: [treble], avg: treble } };
+      return {
+        raw: [],
+        sub: { avg: 0 }, bass: { avg: bass }, lowMid: { avg: 0 }, mid: { avg: mid }, highMid: { avg: 0 }, treble: { avg: treble },
+        vocal: { avg: mid }, energy: mid, centroid: brightness, spectralFlux: 0.5, zcr: 0.5, beatPulse: 0
+      };
     }
 
-    // Features fallback
     if (this._features) {
       const { bass: b, mid: m, treble: t } = this._bandsFromFeatures(positionMs);
       const a = this._alpha;
       const bass = this._last.bass = (1 - a) * this._last.bass + a * b;
       const mid = this._last.mid = (1 - a) * this._last.mid + a * m;
       const treble = this._last.treble = (1 - a) * this._last.treble + a * t;
-      return { raw: [], bass: { values: [bass], avg: bass }, mid: { values: [mid], avg: mid }, treble: { values: [treble], avg: treble } };
+      return {
+        raw: [],
+        sub: { avg: 0 }, bass: { avg: bass }, lowMid: { avg: 0 }, mid: { avg: mid }, highMid: { avg: 0 }, treble: { avg: treble },
+        vocal: { avg: mid }, energy: m, centroid: t, spectralFlux: 0.5, zcr: 0.5, beatPulse: 0
+      };
     }
 
-    // Time-based fallback
     if (this._fallback) {
       const { bass: b, mid: m, treble: t } = this._bandsFromTime(positionMs);
       const a = this._alpha;
       const bass = this._last.bass = (1 - a) * this._last.bass + a * b;
       const mid = this._last.mid = (1 - a) * this._last.mid + a * m;
       const treble = this._last.treble = (1 - a) * this._last.treble + a * t;
-      return { raw: [], bass: { values: [bass], avg: bass }, mid: { values: [mid], avg: mid }, treble: { values: [treble], avg: treble } };
+      return {
+        raw: [],
+        sub: { avg: 0 }, bass: { avg: bass }, lowMid: { avg: 0 }, mid: { avg: mid }, highMid: { avg: 0 }, treble: { avg: treble },
+        vocal: { avg: mid }, energy: m, centroid: t, spectralFlux: 0.5, zcr: 0.5, beatPulse: 0
+      };
     }
 
-    // No data yet
-    return { raw: [], bass: { values: [], avg: 0 }, mid: { values: [], avg: 0 }, treble: { values: [], avg: 0 } };
+    return {
+      raw: [],
+      sub: { avg: 0 }, bass: { avg: 0 }, lowMid: { avg: 0 }, mid: { avg: 0 }, highMid: { avg: 0 }, treble: { avg: 0 },
+      vocal: { avg: 0 }, energy: 0, centroid: 0, spectralFlux: 0, zcr: 0, beatPulse: 0
+    };
   }
 }

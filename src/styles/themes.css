@@ -32,6 +32,4 @@ body.theme-night {
 }
 
 /* Smooth background/color transitions */
-body {
-  transition: background-color 700ms ease, color 700ms ease;
-}
+body { transition: background-color 700ms ease, color 700ms ease; }

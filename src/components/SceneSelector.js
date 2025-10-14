@@ -1,4 +1,4 @@
-// SceneSelector.js - Preset carousel/selector
+// SceneSelector.js - Preset grid
 
 export function SceneSelector(el, { presets, onSelect }) {
   el.innerHTML = '';
@@ -8,7 +8,7 @@ export function SceneSelector(el, { presets, onSelect }) {
   header.innerHTML = `
     <div class="flex items-center gap-2">
       <span class="font-semibold">Scenes</span>
-      <span class="text-xs text-[color:var(--muted)]">Pick a visual preset</span>
+      <span class="text-xs text-[color:var(--muted)]">Layered visual presets</span>
     </div>
   `;
 
@@ -20,7 +20,7 @@ export function SceneSelector(el, { presets, onSelect }) {
     card.className = 'card text-left';
     card.setAttribute('title', p.description);
     card.innerHTML = `
-      <div class="h-16 w-full rounded-md bg-gradient-to-tr from-[color:var(--accent)]/30 to-[color:var(--primary)]/30 ring-1 ring-white/10"></div>
+      <div class="h-16 w-full rounded-md bg-white/10 ring-1 ring-white/20"></div>
       <div class="mt-2">
         <div class="font-semibold text-sm">${p.name}</div>
         <div class="text-xs text-[color:var(--muted)] line-clamp-2">${p.description}</div>

@@ -1,8 +1,8 @@
-// app.js - Add album palette/texture integration + advanced reactivity wiring
+// app.js - Orchestrator with layered visuals, album theming, advanced reactivity, SDK playback
 
 import { login, logout, maybeHandleRedirectCallback, fetchUserProfile, getAccessToken } from './auth.js';
 import { AudioEngine } from './audioEngine.js';
-import { Visualizer } from './visualizer.js';
+import { MultiLayerVisualizer as Visualizer } from './visualizerLayers.js';
 import { UIManager } from './ui.js';
 import { presets } from './presets.js';
 import { SpotifyPlayerController } from './spotifyPlayer.js';
@@ -29,7 +29,7 @@ const audio = new AudioEngine();
 let viz = null;
 
 let currentPreset = presets[0];
-let sourceMode = 'preview';
+let sourceMode = 'preview'; // 'preview' | 'sdk' | 'mic'
 let pendingSdkUri = null;
 
 const sdk = new SpotifyPlayerController({ getAccessToken });
@@ -76,6 +76,9 @@ async function initVisualizer() {
   await viz.init();
   await viz.loadPreset(currentPreset);
   viz.setAudioGetter(() => audio.getBands());
+  // Restore tuning
+  const savedTuning = JSON.parse(localStorage.getItem('luma_tuning') || 'null');
+  if (savedTuning) viz.setTuning(savedTuning);
   viz.start();
 }
 
@@ -90,8 +93,6 @@ async function applyAlbumTheming(albumArtUrl) {
     if (albumOptions.useColors) {
       const palette = await extractPaletteFromImage(albumArtUrl);
       viz.setAlbumColors(palette, true);
-
-      // Optionally reflect into CSS theme variables for UI glow
       document.body.style.setProperty('--primary', palette.primary);
       document.body.style.setProperty('--accent', palette.secondary);
     } else {
@@ -118,6 +119,7 @@ function setupComponents() {
       if (!found) return;
       currentPreset = found;
       await viz.loadPreset(currentPreset);
+      localStorage.setItem('luma_preset', currentPreset.id);
     }
   });
 
@@ -125,6 +127,7 @@ function setupComponents() {
     onResumeAudioContext: () => audio.ensureRunning(),
     onSourceChange: async (mode) => {
       sourceMode = mode;
+      localStorage.setItem('luma_source', sourceMode);
       if (mode === 'mic') {
         try {
           await audio.connectToMic();
@@ -139,10 +142,7 @@ function setupComponents() {
         viz.setAudioGetter(() => audio.getBands());
         ui.toast('Preview mode');
       } else if (mode === 'sdk') {
-        if (!spotify.token) {
-          ui.toast('Login with Spotify first', 'error');
-          return;
-        }
+        if (!spotify.token) { ui.toast('Login with Spotify first', 'error'); return; }
         try {
           await sdk.init();
           viz.setAudioGetter(() => analysis.getBandsAt(sdk.getApproxPositionMs()));
@@ -155,10 +155,7 @@ function setupComponents() {
     },
     onSearch: async (q) => {
       if (!q || !q.trim()) return { items: [] };
-      if (!spotify.token) {
-        ui.toast('Login with Spotify to search tracks', 'error');
-        return { items: [] };
-      }
+      if (!spotify.token) { ui.toast('Login with Spotify to search tracks', 'error'); return { items: [] }; }
       try {
         const data = await searchTracks(q.trim());
         const items = (data.tracks?.items || []).map(t => ({
@@ -171,33 +168,19 @@ function setupComponents() {
           albumArt: t.album?.images?.[1]?.url || t.album?.images?.[0]?.url || ''
         }));
         return { items };
-      } catch (e) {
-        console.error(e);
-        ui.toast('Search failed', 'error');
-        return { items: [] };
-      }
+      } catch (e) { console.error(e); ui.toast('Search failed', 'error'); return { items: [] }; }
     },
     onSelectTrack: async (item) => {
       try {
-        if (!spotify.token) {
-          ui.toast('Login with Spotify first', 'error');
-          return;
-        }
-
-        // Apply album theming immediately
+        if (!spotify.token) { ui.toast('Login with Spotify first', 'error'); return; }
         if (item.albumArt) await applyAlbumTheming(item.albumArt);
 
         if (sourceMode === 'sdk') {
-          await analysis.load(item.id, spotify.token).catch(() => { /* fallbacks inside engine */ });
+          await analysis.load(item.id, spotify.token).catch(() => {});
           await sdk.init();
           if (sdk.isReady() && sdk.isActive()) {
-            try {
-              await sdk.playTrackUri(item.uri, 0);
-              pendingSdkUri = null;
-              ui.toast(`Playing: ${item.name}`);
-            } catch (e) {
-              ui.toast(e.message || 'Failed to start SDK playback', 'error');
-            }
+            try { await sdk.playTrackUri(item.uri, 0); pendingSdkUri = null; ui.toast(`Playing: ${item.name}`); }
+            catch (e) { ui.toast(e.message || 'Failed to start SDK playback', 'error'); }
           } else {
             pendingSdkUri = item.uri;
             ui.toast('Track queued. Press Play to start.', 'info');
@@ -211,28 +194,17 @@ function setupComponents() {
         } else if (sourceMode === 'mic') {
           ui.toast('Mic mode active. Switch to Preview/Spotify to play tracks.');
         }
-      } catch (e) {
-        console.error(e);
-        ui.toast(e.message || 'Unable to handle track selection', 'error');
-      }
+      } catch (e) { console.error(e); ui.toast(e.message || 'Unable to handle track selection', 'error'); }
     },
     onPlay: async () => {
       try {
         if (sourceMode === 'sdk') {
           await sdk.activate();
-          try {
-            await sdk.transferPlayback({ play: true });
-          } catch (e) {
-            ui.toast(e.message, 'error');
-            return;
-          }
+          try { await sdk.transferPlayback({ play: true }); }
+          catch (e) { ui.toast(e.message, 'error'); return; }
           if (pendingSdkUri) {
-            try {
-              await sdk.playTrackUri(pendingSdkUri, 0);
-              pendingSdkUri = null;
-            } catch (e) {
-              ui.toast(e.message || 'Failed to start SDK playback', 'error');
-            }
+            try { await sdk.playTrackUri(pendingSdkUri, 0); pendingSdkUri = null; }
+            catch (e) { ui.toast(e.message || 'Failed to start SDK playback', 'error'); }
           } else {
             await sdk.resume();
           }
@@ -240,9 +212,7 @@ function setupComponents() {
           await audio.ensureRunning();
           await dom.audioEl.play();
         }
-      } catch {
-        ui.toast('Unable to start playback. Click again or select a track.', 'error');
-      }
+      } catch { ui.toast('Unable to start playback. Click again or select a track.', 'error'); }
     },
     onPause: async () => {
       if (sourceMode === 'sdk') await sdk.pause();
@@ -255,12 +225,20 @@ function setupComponents() {
     onAlbumOptions: async ({ useColors, useTexture }) => {
       albumOptions.useColors = !!useColors;
       albumOptions.useTexture = !!useTexture;
-      // Re-apply based on last known texture in uniform (no reliable album URL cache here)
-      // In practice, this is reapplied on next track selection.
-      viz.setAlbumColors({ primary: null, secondary: null, avg: null }, useColors);
+      // Reapplied on next track selection; texture/color can be cleared immediately if disabled.
+      if (!useColors) viz.setAlbumColors({ primary: null, secondary: null, avg: null }, false);
       if (!useTexture) await viz.setAlbumTexture(null);
     }
   });
+
+  // Restore last selection
+  const savedPresetId = localStorage.getItem('luma_preset');
+  if (savedPresetId) {
+    const p = presets.find(x => x.id === savedPresetId);
+    if (p) { currentPreset = p; viz.loadPreset(currentPreset); }
+  }
+  const savedSource = localStorage.getItem('luma_source');
+  if (savedSource) sourceMode = savedSource;
 }
 
 function setupInactivityUI() { ui.initInactivity(); }

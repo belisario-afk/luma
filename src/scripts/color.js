@@ -1,5 +1,4 @@
-// color.js - lightweight album palette extraction (no deps)
-// Returns primary, secondary, and average colors (hex)
+// color.js - Album palette extraction (dominant colors and average)
 
 export async function extractPaletteFromImage(url, { size = 32 } = {}) {
   const img = await loadImage(url);
@@ -7,16 +6,12 @@ export async function extractPaletteFromImage(url, { size = 32 } = {}) {
   ctx.drawImage(img, 0, 0, size, size);
   const { data } = ctx.getImageData(0, 0, size, size);
 
-  // Average color
   let rSum = 0, gSum = 0, bSum = 0, count = 0;
-  // Quantize to 4 bits per channel for histogram
   const hist = new Map();
 
   for (let i = 0; i < data.length; i += 4) {
-    const a = data[i + 3];
-    if (a < 10) continue;
+    const a = data[i + 3]; if (a < 10) continue;
     const r = data[i], g = data[i + 1], b = data[i + 2];
-
     rSum += r; gSum += g; bSum += b; count++;
 
     const rq = r >> 4, gq = g >> 4, bq = b >> 4;
@@ -26,7 +21,6 @@ export async function extractPaletteFromImage(url, { size = 32 } = {}) {
 
   const avg = count ? rgbToHex(rSum / count, gSum / count, bSum / count) : '#888888';
 
-  // Get top bins by count, prefer saturation
   const top = [...hist.entries()]
     .sort((a, b) => b[1] - a[1])
     .slice(0, 24)

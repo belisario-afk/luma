@@ -1,4 +1,5 @@
-// presets.js - Visual presets catalog
+// presets.js - Presets with color palettes + per-layer weight multipliers
+// layerWeights: influence composite blending (bass/vocal/treble multipliers)
 
 export const presets = [
   {
@@ -7,15 +8,10 @@ export const presets = [
     description: "Golden fractals breathing with the bass.",
     shader: "fractalTemple.glsl",
     params: {
-      bloomIntensity: 0.6,
       color1: "#FFD77F",
-      color2: "#FF8C00",
-      motionScale: 1.2
+      color2: "#FF8C00"
     },
-    audioMap: {
-      bass: "bloomIntensity",
-      mid: "motionScale"
-    }
+    layerWeights: { bass: 1.0, vocal: 0.8, treble: 0.6 }
   },
   {
     id: "liquid-neon",
@@ -23,15 +19,10 @@ export const presets = [
     description: "Holographic wave grids pulsing to treble.",
     shader: "liquidNeon.glsl",
     params: {
-      rippleSize: 0.8,
-      glow: 0.5,
       color1: "#33d0ff",
       color2: "#ff33cc"
     },
-    audioMap: {
-      bass: "rippleSize",
-      treble: "glow"
-    }
+    layerWeights: { bass: 0.7, vocal: 0.9, treble: 1.2 }
   },
   {
     id: "breathing-bloom",
@@ -40,12 +31,9 @@ export const presets = [
     shader: "breathingBloom.glsl",
     params: {
       color1: "#ffd1e8",
-      color2: "#7fe3ff",
-      bloom: 0.5
+      color2: "#7fe3ff"
     },
-    audioMap: {
-      bass: "bloom"
-    }
+    layerWeights: { bass: 0.6, vocal: 0.8, treble: 0.7 }
   },
   {
     id: "eclipse-pulse",
@@ -54,12 +42,9 @@ export const presets = [
     shader: "eclipsePulse.glsl",
     params: {
       color1: "#ffcc7a",
-      color2: "#2b2b46",
-      glow: 0.6
+      color2: "#2b2b46"
     },
-    audioMap: {
-      treble: "glow"
-    }
+    layerWeights: { bass: 1.1, vocal: 0.6, treble: 0.8 }
   },
   {
     id: "lofi-mist",
@@ -68,12 +53,9 @@ export const presets = [
     shader: "lofiMist.glsl",
     params: {
       color1: "#b0c4de",
-      color2: "#e6e6f0",
-      mist: 0.7
+      color2: "#e6e6f0"
     },
-    audioMap: {
-      mid: "mist"
-    }
+    layerWeights: { bass: 0.5, vocal: 0.7, treble: 0.6 }
   },
   {
     id: "aurora-flow",
@@ -82,11 +64,8 @@ export const presets = [
     shader: "auroraFlow.glsl",
     params: {
       color1: "#7fe3ff",
-      color2: "#b987ff",
-      flow: 0.6
+      color2: "#b987ff"
     },
-    audioMap: {
-      bass: "flow"
-    }
+    layerWeights: { bass: 0.7, vocal: 1.0, treble: 0.9 }
   }
 ];
