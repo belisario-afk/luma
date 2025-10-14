@@ -1,0 +1,37 @@
+/* Theme variables and transitions. Applied on <body> via class binding in app.js */
+:root {
+  --bg-morning: #0a1020;
+  --fg-morning: #e8f1ff;
+
+  --bg-evening: #1a1310;
+  --fg-evening: #fff4e6;
+
+  --bg-night: #07070c;
+  --fg-night: #e6e1ff;
+}
+
+body.theme-morning {
+  --bg: var(--bg-morning);
+  --fg: var(--fg-morning);
+  --primary: #87b7ff;
+  --accent: #7fe3ff;
+}
+
+body.theme-evening {
+  --bg: var(--bg-evening);
+  --fg: var(--fg-evening);
+  --primary: #ffc77e;
+  --accent: #ff9c7e;
+}
+
+body.theme-night {
+  --bg: var(--bg-night);
+  --fg: var(--fg-night);
+  --primary: #b987ff;
+  --accent: #7fd6ff;
+}
+
+/* Smooth background/color transitions */
+body {
+  transition: background-color 700ms ease, color 700ms ease;
+}

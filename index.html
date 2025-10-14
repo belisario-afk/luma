@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Luma — Audio‑Reactive Meditation Visualizer</title>
+  <meta name="description" content="Luma is a Spotify-connected, audio-reactive visualization and meditation web app." />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" href="./public/favicon.ico" />
+  <!-- Tailwind Play CDN (no build step required) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet"/>
+
+  <!-- App styles -->
+  <link rel="stylesheet" href="./src/styles/main.css" />
+  <link rel="stylesheet" href="./src/styles/themes.css" />
+</head>
+<body class="font-inter min-h-screen bg-[color:var(--bg)] text-[color:var(--fg)] transition-colors duration-700">
+  <!-- Navbar -->
+  <header id="navbar" class="fixed top-0 left-0 right-0 z-40"></header>
+
+  <!-- UI overlay container (auto hides after inactivity) -->
+  <div id="ui-overlay" class="ui-overlay z-30 pointer-events-auto">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex flex-col gap-3">
+      <!-- Player Controls -->
+      <section id="player-controls" class="bg-white/10 backdrop-blur-sm rounded-xl p-3 shadow-glow"></section>
+
+      <!-- Scene / Preset Selector -->
+      <section id="scene-selector" class="bg-white/10 backdrop-blur-sm rounded-xl p-3 shadow-glow"></section>
+    </div>
+  </div>
+
+  <!-- Canvas container -->
+  <main id="canvas-root" class="w-full h-screen"></main>
+
+  <!-- Hidden audio element for preview or local playback -->
+  <audio id="audio-el" crossorigin="anonymous" hidden></audio>
+
+  <!-- Spotify Web Playback SDK (optional; used only if Premium and enabled) -->
+  <script defer src="https://sdk.scdn.co/spotify-player.js"></script>
+
+  <!-- App entry -->
+  <script type="module" src="./src/scripts/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "name": "Luma",
+  "short_name": "Luma",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0a0a0f",
+  "theme_color": "#87b7ff",
+  "description": "Spotify-connected, audio-reactive visualization and meditation web app.",
+  "icons": [
+    {
+      "src": "public/logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
