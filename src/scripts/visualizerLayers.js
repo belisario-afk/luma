@@ -1,7 +1,6 @@
-// visualizerLayers.js - Multi-layer compositor for rich, band-specific visuals.
-// Layers: Background, Bass/Sub, Vocal, Treble → Composite.
-// Preset colors + per-layer weight multipliers.
-// Live tuning with EMA smoothing and shaping, album texture + colors.
+// visualizerLayers.js - Multi-layer compositor with per-scene shader sets.
+// Each scene can provide its own layerSet: { bg, bass, vocal, treble, comp } (paths to GLSL files).
+// We compile those shaders per preset so scenes look and feel different.
 
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
 
@@ -45,7 +44,7 @@ export class MultiLayerVisualizer {
       uAlbumOn: { value: 0 }
     };
 
-    // Composite-specific controls
+    // Composite uniforms include render targets + weights
     this.compUniforms = {
       ...this.common,
       tBG: { value: null },
@@ -73,12 +72,25 @@ export class MultiLayerVisualizer {
 
     this._texLoader = new THREE.TextureLoader();
 
-    // Materials (init later)
+    // Materials (rebuilt per scene layer set)
     this.matBG = null;
     this.matBass = null;
     this.matVocal = null;
     this.matTreble = null;
     this.matComposite = null;
+
+    // Fullscreen quad meshes to reuse while swapping materials
+    this.quadBG = new THREE.Mesh(new THREE.PlaneGeometry(2,2), new THREE.MeshBasicMaterial({ color: 0x0 }));
+    this.quadBass = this.quadBG.clone();
+    this.quadVocal = this.quadBG.clone();
+    this.quadTreble = this.quadBG.clone();
+    this.quadComp = this.quadBG.clone();
+
+    this.sceneBG.add(this.quadBG);
+    this.sceneBass.add(this.quadBass);
+    this.sceneVocal.add(this.quadVocal);
+    this.sceneTreble.add(this.quadTreble);
+    this.sceneComposite.add(this.quadComp);
   }
 
   setTuning(next = {}) { Object.assign(this.tuning, next); }
@@ -97,53 +109,60 @@ export class MultiLayerVisualizer {
     });
     this.rtBG = mkRT(); this.rtBass = mkRT(); this.rtVocal = mkRT(); this.rtTreble = mkRT();
 
-    // Load shaders
-    const load = (p) => fetch(new URL(p, import.meta.url)).then(r=>r.text());
-    const [bgFrag, bassFrag, vocalFrag, trebleFrag, compFrag] = await Promise.all([
-      load('../assets/shaders/layers/backgroundLayer.glsl'),
-      load('../assets/shaders/layers/bassLayer.glsl'),
-      load('../assets/shaders/layers/vocalLayer.glsl'),
-      load('../assets/shaders/layers/trebleLayer.glsl'),
-      load('../assets/shaders/layers/composite.glsl')
-    ]);
-
-    this.matBG = new THREE.ShaderMaterial({ uniforms: this.common, vertexShader: VERT, fragmentShader: bgFrag, transparent: true });
-    this.matBass = new THREE.ShaderMaterial({ uniforms: this.common, vertexShader: VERT, fragmentShader: bassFrag, transparent: true });
-    this.matVocal = new THREE.ShaderMaterial({ uniforms: this.common, vertexShader: VERT, fragmentShader: vocalFrag, transparent: true });
-    this.matTreble = new THREE.ShaderMaterial({ uniforms: this.common, vertexShader: VERT, fragmentShader: trebleFrag, transparent: true });
-
     this.compUniforms.tBG.value = this.rtBG.texture;
     this.compUniforms.tBass.value = this.rtBass.texture;
     this.compUniforms.tVocal.value = this.rtVocal.texture;
     this.compUniforms.tTreble.value = this.rtTreble.texture;
-
-    this.matComposite = new THREE.ShaderMaterial({ uniforms: this.compUniforms, vertexShader: VERT, fragmentShader: compFrag, transparent: false });
-
-    // Fullscreen quad helper
-    const quad = new THREE.Mesh(new THREE.PlaneGeometry(2,2), new THREE.MeshBasicMaterial({ color: 0x0 }));
-    const attach = (scene, material) => { const m = quad.clone(); m.material = material; scene.add(m); };
-
-    attach(this.sceneBG, this.matBG);
-    attach(this.sceneBass, this.matBass);
-    attach(this.sceneVocal, this.matVocal);
-    attach(this.sceneTreble, this.matTreble);
-    attach(this.sceneComposite, this.matComposite);
 
     this._onResize = this._onResize.bind(this);
     window.addEventListener('resize', this._onResize);
     this._onResize();
   }
 
+  async loadLayerSet(layerSet) {
+    // Dispose previous materials if they exist
+    [this.matBG, this.matBass, this.matVocal, this.matTreble, this.matComposite].forEach(m => m?.dispose());
+
+    // Fetch layer shaders for this scene
+    const load = (p) => fetch(new URL(p, import.meta.url)).then(r=>r.text());
+    const [bgFrag, bassFrag, vocalFrag, trebleFrag, compFrag] = await Promise.all([
+      load(layerSet.bg),
+      load(layerSet.bass),
+      load(layerSet.vocal),
+      load(layerSet.treble),
+      load(layerSet.comp),
+    ]);
+
+    // Build new materials
+    this.matBG = new THREE.ShaderMaterial({ uniforms: this.common, vertexShader: VERT, fragmentShader: bgFrag, transparent: true });
+    this.matBass = new THREE.ShaderMaterial({ uniforms: this.common, vertexShader: VERT, fragmentShader: bassFrag, transparent: true });
+    this.matVocal = new THREE.ShaderMaterial({ uniforms: this.common, vertexShader: VERT, fragmentShader: vocalFrag, transparent: true });
+    this.matTreble = new THREE.ShaderMaterial({ uniforms: this.common, vertexShader: VERT, fragmentShader: trebleFrag, transparent: true });
+    this.matComposite = new THREE.ShaderMaterial({ uniforms: this.compUniforms, vertexShader: VERT, fragmentShader: compFrag, transparent: false });
+
+    // Attach to quads
+    this.quadBG.material = this.matBG;
+    this.quadBass.material = this.matBass;
+    this.quadVocal.material = this.matVocal;
+    this.quadTreble.material = this.matTreble;
+    this.quadComp.material = this.matComposite;
+  }
+
   async loadPreset(preset) {
-    // Color scheme
+    // Colors
     this.common.uColor1.value = new THREE.Color(preset.params?.color1 || '#ffffff');
     this.common.uColor2.value = new THREE.Color(preset.params?.color2 || '#000000');
 
-    // Layer weight multipliers
+    // Weights
     const lw = preset.layerWeights || { bass: 1, vocal: 1, treble: 1 };
     this.compUniforms.uWBass.value = lw.bass ?? 1;
     this.compUniforms.uWVocal.value = lw.vocal ?? 1;
     this.compUniforms.uWTreble.value = lw.treble ?? 1;
+
+    // Layer set (critical: actually changes visuals per scene)
+    if (preset.layerSet) {
+      await this.loadLayerSet(preset.layerSet);
+    }
   }
 
   async setAlbumTexture(url) {
@@ -252,5 +271,6 @@ export class MultiLayerVisualizer {
     window.removeEventListener('resize', this._onResize);
     this.renderer?.dispose();
     [this.rtBG, this.rtBass, this.rtVocal, this.rtTreble].forEach(rt => rt?.dispose());
+    [this.matBG, this.matBass, this.matVocal, this.matTreble, this.matComposite].forEach(m => m?.dispose());
   }
 }

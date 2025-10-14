@@ -1,4 +1,5 @@
-// app.js - Orchestrator with layered visuals, album theming, advanced reactivity, SDK playback
+// app.js - Only change SDK selection behavior: never force playback on select.
+// Always queue the URI and start on Play (activation + transfer), avoiding failed PUTs.
 
 import { login, logout, maybeHandleRedirectCallback, fetchUserProfile, getAccessToken } from './auth.js';
 import { AudioEngine } from './audioEngine.js';
@@ -75,7 +76,6 @@ async function initVisualizer() {
   viz = new Visualizer({ container: dom.canvasRoot });
   await viz.init();
 
-  // Restore last preset
   const savedPresetId = localStorage.getItem('luma_preset');
   if (savedPresetId) {
     const p = presets.find(x => x.id === savedPresetId);
@@ -83,7 +83,6 @@ async function initVisualizer() {
   }
   await viz.loadPreset(currentPreset);
 
-  // Restore tuning
   const savedTuning = JSON.parse(localStorage.getItem('luma_tuning') || 'null');
   if (savedTuning) viz.setTuning(savedTuning);
 
@@ -97,7 +96,6 @@ async function applyAlbumTheming(albumArtUrl) {
     await viz.setAlbumTexture(null);
     return;
   }
-
   try {
     if (albumOptions.useColors) {
       const palette = await extractPaletteFromImage(albumArtUrl);
@@ -107,7 +105,6 @@ async function applyAlbumTheming(albumArtUrl) {
     } else {
       viz.setAlbumColors({ primary: null, secondary: null, avg: null }, false);
     }
-
     if (albumOptions.useTexture) {
       await viz.setAlbumTexture(albumArtUrl);
     } else {
@@ -127,7 +124,7 @@ function setupComponents() {
       const found = presets.find(p => p.id === presetId);
       if (!found) return;
       currentPreset = found;
-      await viz.loadPreset(currentPreset);
+      await viz.loadPreset(currentPreset); // swaps layer shaders too
       localStorage.setItem('luma_preset', currentPreset.id);
     }
   });
@@ -185,15 +182,11 @@ function setupComponents() {
         if (item.albumArt) await applyAlbumTheming(item.albumArt);
 
         if (sourceMode === 'sdk') {
+          // Load analysis (graceful fallbacks inside engine)
           await analysis.load(item.id, spotify.token).catch(() => {});
-          await sdk.init();
-          if (sdk.isReady() && sdk.isActive()) {
-            try { await sdk.playTrackUri(item.uri, 0); pendingSdkUri = null; ui.toast(`Playing: ${item.name}`); }
-            catch (e) { ui.toast(e.message || 'Failed to start SDK playback', 'error'); }
-          } else {
-            pendingSdkUri = item.uri;
-            ui.toast('Track queued. Press Play to start.', 'info');
-          }
+          // Do NOT try to play immediately to avoid device/activation race and 403/404
+          pendingSdkUri = item.uri;
+          ui.toast('Track queued. Press Play to start.', 'info');
         } else if (sourceMode === 'preview') {
           await audio.setSpotifyTrackById(item.id, spotify.token, dom.audioEl);
           await audio.ensureRunning();
@@ -239,15 +232,6 @@ function setupComponents() {
       if (!useTexture) await viz.setAlbumTexture(null);
     }
   });
-
-  // Apply saved source mode effect on load (doesn't auto play)
-  if (sourceMode === 'mic') {
-    // do nothing until user enables mic via source toggle
-  } else if (sourceMode === 'sdk' && spotify.token) {
-    viz.setAudioGetter(() => analysis.getBandsAt(sdk.getApproxPositionMs()));
-  } else {
-    viz.setAudioGetter(() => audio.getBands());
-  }
 }
 
 function setupInactivityUI() { ui.initInactivity(); }
