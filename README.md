@@ -1,12 +1,12 @@
 # Luma
 
-Spotify-connected, audio-reactive visualization and meditation web app. Choose a Spotify track (or use microphone input) and enjoy real-time, audio-synchronized visual scenes.
+Spotify-connected, audio-reactive visualization and meditation web app. Choose a Spotify track (full track via Spotify SDK or 30s preview) or use microphone input, and enjoy real-time, audio-synchronized visual scenes.
 
 - Live URL (after deploy): https://belisario-afk.github.io/luma/
 - Redirect URI (Spotify): https://belisario-afk.github.io/luma/
 - Client ID: 927fda6918514f96903e828fcd6bb576
 
-Note: Full Spotify login works on the GitHub Pages URL due to Spotify redirect rules. Locally, you can still use Microphone mode or local audio previews.
+Note: Full-track playback uses the Spotify Web Playback SDK (Premium required). Visuals in SDK mode are driven by Spotify’s Audio Analysis synchronized to playback position. In Preview/Microphone modes, visuals are driven by live FFT via the Web Audio API.
 
 ## Quick Start
 
@@ -21,17 +21,20 @@ Note: Full Spotify login works on the GitHub Pages URL due to Spotify redirect r
   - `npx serve -p 5173 .`
   - Open http://localhost:5173/luma/
 
-3) Log in with Spotify (on production)
+3) Log in with Spotify (production)
 - Visit https://belisario-afk.github.io/luma/
 - Click "Login with Spotify"
-- Approve permissions (streaming, user-read-email, user-read-private)
-- If you don’t have Premium or a track has no preview, use Microphone mode.
+- Approve permissions: streaming, user-read-email, user-read-private, user-read-playback-state, user-modify-playback-state
+- Premium is required for SDK full-track playback. If not available, use Preview or Microphone modes.
 
 4) Use the app
-- Pick a preset from the Scene Selector
-- Search for a track (uses 30s preview URLs when available) and press Play
-- Or enable the Microphone and play music around your mic
-- UI fades away after a few seconds of inactivity; move the mouse/tap to show it again
+- Select a Scene (preset)
+- Choose a Source:
+  - Preview (30s): plays track previews and uses live FFT for visuals
+  - Spotify (Full): plays full tracks via the Spotify SDK; visuals use Audio Analysis synchronized to player position
+  - Microphone: uses your mic input and live FFT
+- Search for a track and click it to play in the chosen source mode.
+- Use Play/Pause controls. UI fades after inactivity; move the mouse/tap to show it.
 
 5) Deploy to GitHub Pages
 - Create the repo `luma` under your GitHub account
@@ -41,26 +44,18 @@ Note: Full Spotify login works on the GitHub Pages URL due to Spotify redirect r
 
 ## Tech Stack
 
-- HTML5, CSS3 (Tailwind Play CDN + custom themes)
+- HTML5, CSS3 (Tailwind CDN + custom themes; optional prebuilt CSS)
 - Vanilla JavaScript (ES modules)
 - Three.js + GLSL shaders
-- Spotify Web API (+ optional Web Playback SDK if Premium)
-- Web Audio API (FFT, mic input)
+- Spotify Web API + Web Playback SDK (full tracks)
+- Web Audio API (FFT for previews and mic)
 - GitHub Pages (static hosting)
 
-## Notes on Spotify Playback
+## Notes
 
-- Visualizer uses live audio from:
-  - Microphone input, or
-  - Track preview URLs (30s clips) for most tracks
-- Web Playback SDK full tracks require Spotify Premium and cannot be piped into the Web Audio API for FFT due to DRM. For visualization, we default to preview URLs or mic input.
+- The Web Playback SDK's audio output cannot be piped into the Web Audio API due to DRM. In SDK mode we synthesize band data from the Spotify Audio Analysis (per-segment loudness/timbre) in sync with the current playback position.
+- In Preview or Microphone modes, we perform true real-time FFT analysis.
 
-## Development
+## Tailwind in production
 
-- No bundlers required; all ES modules load directly in the browser
-- Shaders are loaded dynamically from `/src/assets/shaders`
-- See `docs/ARCHITECTURE.md` and `docs/API_REFERENCE.md` for details
-
-## License
-
-MIT (or your choice)
+The Tailwind CDN warning is informational. For a production CSS build, see tailwind-setup.md (optional).

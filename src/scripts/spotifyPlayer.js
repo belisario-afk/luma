@@ -1,0 +1,116 @@
+// spotifyPlayer.js - Wrapper around Spotify Web Playback SDK + Web API controls
+
+export class SpotifyPlayerController {
+  constructor({ getAccessToken }) {
+    this.getAccessToken = getAccessToken; // function returning a fresh token
+    this.player = null;
+    this.deviceId = null;
+    this.ready = false;
+
+    this._lastState = null;
+    this._lastStateTimestamp = 0;
+    this._stateListeners = new Set();
+  }
+
+  async init() {
+    if (this.player) return;
+
+    if (!window.Spotify) {
+      // Wait for SDK ready event
+      await new Promise(resolve => {
+        const handler = () => {
+          window.removeEventListener('spotify-sdk-ready', handler);
+          resolve();
+        };
+        window.addEventListener('spotify-sdk-ready', handler);
+      });
+    }
+
+    this.player = new window.Spotify.Player({
+      name: 'Luma Player',
+      volume: 0.8,
+      getOAuthToken: async cb => {
+        try {
+          const token = await this.getAccessToken();
+          cb(token || '');
+        } catch {
+          cb('');
+        }
+      }
+    });
+
+    this.player.addListener('ready', ({ device_id }) => {
+      this.deviceId = device_id;
+      this.ready = true;
+    });
+
+    this.player.addListener('not_ready', ({ device_id }) => {
+      if (this.deviceId === device_id) {
+        this.ready = false;
+      }
+    });
+
+    this.player.addListener('player_state_changed', state => {
+      this._lastState = state || null;
+      this._lastStateTimestamp = performance.now();
+      for (const cb of this._stateListeners) cb(state);
+    });
+
+    await this.player.connect();
+  }
+
+  onStateChanged(cb) {
+    this._stateListeners.add(cb);
+    return () => this._stateListeners.delete(cb);
+  }
+
+  getApproxPositionMs() {
+    const s = this._lastState;
+    if (!s) return 0;
+    const now = performance.now();
+    const delta = now - this._lastStateTimestamp;
+    const base = s.position || 0;
+    return s.paused ? base : base + delta;
+  }
+
+  async transferPlayback() {
+    const token = await this.getAccessToken();
+    if (!token || !this.deviceId) throw new Error('Player not ready');
+
+    await fetch('https://api.spotify.com/v1/me/player', {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ device_ids: [this.deviceId], play: false })
+    });
+  }
+
+  async playTrackUri(uri, position_ms = 0) {
+    const token = await this.getAccessToken();
+    if (!token || !this.deviceId) throw new Error('Player not ready');
+
+    const url = `https://api.spotify.com/v1/me/player/play?device_id=${encodeURIComponent(this.deviceId)}`;
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ uris: [uri], position_ms })
+    });
+    if (!res.ok && res.status !== 204) {
+      const t = await res.text().catch(() => '');
+      throw new Error(`Failed to start playback: ${res.status} ${t}`);
+    }
+  }
+
+  async pause() {
+    try { await this.player?.pause(); } catch {}
+  }
+
+  async resume() {
+    try { await this.player?.resume(); } catch {}
+  }
+}

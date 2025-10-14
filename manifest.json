@@ -8,8 +8,8 @@
   "description": "Spotify-connected, audio-reactive visualization and meditation web app.",
   "icons": [
     {
-      "src": "public/logo.png",
-      "sizes": "512x512",
+      "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=",
+      "sizes": "192x192",
       "type": "image/png"
     }
   ]

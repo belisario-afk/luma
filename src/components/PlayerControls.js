@@ -1,6 +1,6 @@
-// PlayerControls.js - Transport, search, and mic toggle
+// PlayerControls.js - Transport, search, and source selection (Preview / Spotify SDK / Microphone)
 
-export function PlayerControls(el, { onResumeAudioContext, onSearch, onSelectTrack, onToggleMic, onPlay, onPause }) {
+export function PlayerControls(el, { onResumeAudioContext, onSearch, onSelectTrack, onSourceChange, onPlay, onPause }) {
   el.innerHTML = '';
 
   const row1 = document.createElement('div');
@@ -23,21 +23,26 @@ export function PlayerControls(el, { onResumeAudioContext, onSearch, onSelectTra
   pauseBtn.textContent = 'Pause';
   pauseBtn.addEventListener('click', () => onPause?.());
 
-  const micToggle = document.createElement('button');
-  micToggle.className = 'ghost';
-  micToggle.textContent = 'Use Microphone';
-  micToggle.dataset.enabled = 'false';
-  micToggle.addEventListener('click', async () => {
-    const enabled = micToggle.dataset.enabled === 'true';
-    await onResumeAudioContext?.();
-    await onToggleMic?.(!enabled);
-    micToggle.dataset.enabled = (!enabled).toString();
-    micToggle.textContent = !enabled ? 'Disable Microphone' : 'Use Microphone';
-  });
+  // Source selector
+  const sourceWrap = document.createElement('div');
+  sourceWrap.className = 'flex items-center gap-2 ml-2';
+  const label = document.createElement('label');
+  label.className = 'text-xs text-[color:var(--muted)]';
+  label.textContent = 'Source';
+  const select = document.createElement('select');
+  select.className = 'search max-w-[220px]';
+  select.innerHTML = `
+    <option value="preview">Preview (30s)</option>
+    <option value="sdk">Spotify (Full)</option>
+    <option value="mic">Microphone</option>
+  `;
+  select.addEventListener('change', () => onSourceChange?.(select.value));
 
   transport.appendChild(playBtn);
   transport.appendChild(pauseBtn);
-  transport.appendChild(micToggle);
+  sourceWrap.appendChild(label);
+  sourceWrap.appendChild(select);
+  transport.appendChild(sourceWrap);
 
   // Search
   const searchWrap = document.createElement('div');
@@ -82,14 +87,12 @@ export function PlayerControls(el, { onResumeAudioContext, onSearch, onSelectTra
           <div class="text-sm font-semibold leading-tight">${item.name}</div>
           <div class="text-xs text-[color:var(--muted)] leading-tight">${item.artist}</div>
         </div>
-        <div class="text-xs ${item.hasPreview ? 'text-green-300' : 'text-red-300'}">${item.hasPreview ? 'Preview' : 'No Preview'}</div>
+        <div class="text-[10px] text-[color:var(--muted)]">${item.hasPreview ? 'Preview OK' : 'No Preview'}</div>
       `;
-      card.style.cursor = item.hasPreview ? 'pointer' : 'not-allowed';
-      if (item.hasPreview) {
-        card.addEventListener('click', async () => {
-          await onSelectTrack?.(item.id);
-        });
-      }
+      card.style.cursor = 'pointer';
+      card.addEventListener('click', async () => {
+        await onSelectTrack?.(item);
+      });
       results.appendChild(card);
     });
   }

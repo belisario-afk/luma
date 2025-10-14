@@ -63,8 +63,8 @@ export class AudioEngine {
   }
 
   async connectToMic() {
+    // Do NOT auto-resume here; ensureRunning should be called from a user gesture (e.g., Play/Mic button).
     await this.init();
-    await this.ensureRunning();
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
     const src = this.ctx.createMediaStreamSource(stream);
     this.connectNode(src);
@@ -72,8 +72,8 @@ export class AudioEngine {
   }
 
   async connectToAudioElement(audioEl) {
+    // Do NOT auto-resume here; resume is triggered by UI on user interaction.
     await this.init();
-    await this.ensureRunning();
     const srcNode = this.ctx.createMediaElementSource(audioEl);
     this.connectNode(srcNode);
     return true;
@@ -95,14 +95,12 @@ export class AudioEngine {
     return preview;
   }
 
-  // Compute band indices from frequencies based on current FFT
   _freqToIndex(freq) {
     const nyquist = this.sampleRate / 2;
     const index = Math.round(freq / nyquist * this.analyser.frequencyBinCount);
     return Math.min(Math.max(index, 0), this.analyser.frequencyBinCount - 1);
   }
 
-  // Return normalized band arrays and aggregate values 0..1
   getBands() {
     if (!this.analyser || !this.freqData) {
       return {
@@ -115,7 +113,6 @@ export class AudioEngine {
 
     this.analyser.getByteFrequencyData(this.freqData);
 
-    // Helper to slice and normalize 0..1
     const segment = (lowHz, highHz) => {
       const start = this._freqToIndex(lowHz);
       const end = this._freqToIndex(highHz);

@@ -2,11 +2,18 @@
 // - Handles login/logout
 // - Stores access_token, refresh_token, expires_at in localStorage
 // - Auto-refreshes token before expiry
-// - Same public API as before: login(), logout(), isAuthenticated(), getAccessToken(), maybeHandleRedirectCallback(), fetchUserProfile()
+// - Public API: login(), logout(), isAuthenticated(), getAccessToken(), maybeHandleRedirectCallback(), fetchUserProfile()
 
 const CLIENT_ID = '927fda6918514f96903e828fcd6bb576';
 const REDIRECT_URI = 'https://belisario-afk.github.io/luma/';
-const SCOPES = ['streaming', 'user-read-email', 'user-read-private'];
+// Added scopes for Web Playback SDK control
+const SCOPES = [
+  'streaming',
+  'user-read-email',
+  'user-read-private',
+  'user-read-playback-state',
+  'user-modify-playback-state'
+];
 
 const STORAGE_KEY = 'luma_spotify_auth';
 const VERIFIER_KEY = 'luma_spotify_pkce_verifier';
@@ -23,6 +30,27 @@ function getStoredAuth() {
   } catch {
     return null;
   }
+}
+
+function scheduleRefresh(auth) {
+  if (!auth) return;
+  if (refreshTimerId) {
+    clearTimeout(refreshTimerId);
+    refreshTimerId = null;
+  }
+  const leadMs = 60_000; // refresh 60s before expiry
+  const delay = Math.max(1_000, auth.expires_at - Date.now() - leadMs);
+  const rt = auth.refresh_token;
+  if (!rt) return;
+
+  refreshTimerId = setTimeout(async () => {
+    try {
+      await refreshAccessToken(rt);
+    } catch (e) {
+      console.warn('Token refresh failed:', e);
+      // allow expiry; user can re-login
+    }
+  }, delay);
 }
 
 function setStoredAuth(data) {
@@ -76,7 +104,7 @@ async function sha256Base64Url(input) {
 function generateCodeVerifier() {
   const bytes = new Uint8Array(64);
   crypto.getRandomValues(bytes);
-  return toBase64Url(bytes); // already base64url-safe, 43..128 chars
+  return toBase64Url(bytes);
 }
 
 function buildAuthUrl({ state, codeChallenge }) {
@@ -100,7 +128,6 @@ export async function login() {
   window.location.href = buildAuthUrl({ state, codeChallenge: challenge });
 }
 
-// Exchange authorization code for tokens
 async function exchangeCodeForTokens(code, verifier) {
   const body = new URLSearchParams({
     client_id: CLIENT_ID,
@@ -122,8 +149,7 @@ async function exchangeCodeForTokens(code, verifier) {
   }
 
   const json = await res.json();
-  // expires_in is in seconds
-  const expires_at = Date.now() + json.expires_in * 1000 - 10_000; // safety margin
+  const expires_at = Date.now() + json.expires_in * 1000 - 10_000;
   return {
     access_token: json.access_token,
     token_type: json.token_type,
@@ -169,32 +195,10 @@ async function refreshAccessToken(refresh_token) {
   return getStoredAuth();
 }
 
-function scheduleRefresh(auth) {
-  if (!auth) return;
-  if (refreshTimerId) {
-    clearTimeout(refreshTimerId);
-    refreshTimerId = null;
-  }
-  const leadMs = 60_000; // refresh 60s before expiry
-  const delay = Math.max(1_000, auth.expires_at - Date.now() - leadMs);
-  const rt = auth.refresh_token;
-  if (!rt) return;
-
-  refreshTimerId = setTimeout(async () => {
-    try {
-      await refreshAccessToken(rt);
-    } catch (e) {
-      console.warn('Token refresh failed:', e);
-      // let it expire; user can re-login
-    }
-  }, delay);
-}
-
 // Handle redirect back from Spotify. Returns true if it handled something.
 export async function maybeHandleRedirectCallback() {
   const url = new URL(window.location.href);
 
-  // Implicit flow used hash; PKCE uses query (?code=)
   const code = url.searchParams.get('code');
   const error = url.searchParams.get('error');
 
@@ -209,12 +213,13 @@ export async function maybeHandleRedirectCallback() {
       if (!verifier) throw new Error('Missing PKCE verifier');
 
       const tokenData = await exchangeCodeForTokens(code, verifier);
-      setStoredAuth(tokenData);
 
-      // Clean query params
+      // Clean the URL BEFORE emitting auth-changed to avoid repeated exchange
       url.searchParams.delete('code');
       url.searchParams.delete('state');
-      history.replaceState(null, '', url.pathname + url.search);
+      history.replaceState(null, '', url.pathname + (url.search ? `?${url.searchParams.toString()}` : ''));
+
+      setStoredAuth(tokenData);
       return true;
     } catch (e) {
       console.warn('Spotify auth exchange error:', e.message || e);
@@ -222,7 +227,6 @@ export async function maybeHandleRedirectCallback() {
     }
   }
 
-  // If we already have stored auth, ensure refresh is scheduled
   const existing = getStoredAuth();
   if (existing) scheduleRefresh(existing);
   return false;

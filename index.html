@@ -7,7 +7,7 @@
   <meta name="description" content="Luma is a Spotify-connected, audio-reactive visualization and meditation web app." />
   <link rel="manifest" href="./manifest.json" />
   <link rel="icon" href="./public/favicon.ico" />
-  <!-- Tailwind Play CDN (no build step required) -->
+  <!-- Tailwind Play CDN (OK for GH Pages; see README for production build option) -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
@@ -39,8 +39,13 @@
   <!-- Hidden audio element for preview or local playback -->
   <audio id="audio-el" crossorigin="anonymous" hidden></audio>
 
-  <!-- Spotify Web Playback SDK (optional; used only if Premium and enabled) -->
-  <script defer src="https://sdk.scdn.co/spotify-player.js"></script>
+  <!-- Ensure SDK callback exists before the SDK loads -->
+  <script>
+    window.onSpotifyWebPlaybackSDKReady = function() {
+      window.dispatchEvent(new Event('spotify-sdk-ready'));
+    };
+  </script>
+  <script src="https://sdk.scdn.co/spotify-player.js"></script>
 
   <!-- App entry -->
   <script type="module" src="./src/scripts/app.js"></script>

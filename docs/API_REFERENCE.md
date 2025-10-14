@@ -1,16 +1,35 @@
 # API Reference
 
-## Spotify Authentication (Implicit Grant Flow)
+## Spotify Authentication (Authorization Code with PKCE)
+
+Recommended for SPAs and required now that Implicit Grant is no longer supported.
 
 - Authorization endpoint: `https://accounts.spotify.com/authorize`
-- Required query params:
+- Query params:
   - `client_id=927fda6918514f96903e828fcd6bb576`
-  - `response_type=token`
+  - `response_type=code`
   - `redirect_uri=https://belisario-afk.github.io/luma/`
   - `scope=streaming user-read-email user-read-private`
+  - `code_challenge_method=S256`
+  - `code_challenge=<SHA256(code_verifier) base64url>`
   - `state=<random>`
 
-On success, you receive `#access_token=...&token_type=Bearer&expires_in=3600` in the hash fragment. The app stores this in `localStorage` with an expiry timestamp.
+Exchange code for tokens:
+- `POST https://accounts.spotify.com/api/token`
+- `Content-Type: application/x-www-form-urlencoded`
+- Body:
+  - `client_id=927fda6918514f96903e828fcd6bb576`
+  - `grant_type=authorization_code`
+  - `code=<code>`
+  - `redirect_uri=https://belisario-afk.github.io/luma/`
+  - `code_verifier=<original verifier>`
+
+Refresh tokens:
+- `POST https://accounts.spotify.com/api/token`
+- Body:
+  - `client_id=927fda6918514f96903e828fcd6bb576`
+  - `grant_type=refresh_token`
+  - `refresh_token=<refresh_token>`
 
 ## Spotify Web API
 
@@ -26,27 +45,17 @@ On success, you receive `#access_token=...&token_type=Bearer&expires_in=3600` in
 ## Web Audio API
 
 - `AudioContext` + `AnalyserNode` with `fftSize=2048`
-- Band segmentation:
+- Bands:
   - Bass: ~20–140 Hz
   - Mid: ~140–2000 Hz
   - Treble: ~2000–11025 Hz
-- Normalization: byte frequency data (0..255) → (0..1) floats
+- Normalization: 0..255 → 0..1 floats
 
 ## Three.js + Shaders
 
-- Full-screen plane with ShaderMaterial
-- Default uniforms:
-  - `uniform float uTime;`
-  - `uniform vec2 uResolution;`
-  - `uniform float uBass, uMid, uTreble;`
-  - `uniform vec3 uColor1, uColor2;`
-  - `uniform float uParam1..uParam4;` (generic)
-- Presets define:
-  - `shader` filename (fragment only)
-  - `params` object to set colors/params
-  - Optional `audioMap` to map `bass/mid/treble` → param name
-
-## Rate limits / Constraints
-
-- Spotify Web API may rate-limit excessive requests. Cache results in the UI where possible.
-- `preview_url` may be absent for some tracks; instruct users to try another track or use Mic mode.
+- Full-screen quad with ShaderMaterial
+- Uniforms:
+  - `uTime`, `uResolution`
+  - `uBass`, `uMid`, `uTreble`
+  - `uColor1`, `uColor2`
+  - `uParam1..uParam4` for generic floats
