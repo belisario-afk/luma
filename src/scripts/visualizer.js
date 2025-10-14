@@ -1,4 +1,4 @@
-// visualizer.js - Three.js + shaders
+// visualizer.js - Three.js + shaders with audio smoothing and tuning
 // Initializes a full-screen plane and maps audio bands to shader uniforms.
 // Shaders are loaded from /src/assets/shaders using fetch.
 
@@ -11,6 +11,8 @@ const DEFAULT_VERTEX = /* glsl */`
     gl_Position = vec4(position, 1.0);
   }
 `;
+
+function clamp01(x) { return Math.min(1, Math.max(0, x)); }
 
 export class Visualizer {
   constructor({ container }) {
@@ -27,7 +29,7 @@ export class Visualizer {
       uBass: { value: 0 },
       uMid: { value: 0 },
       uTreble: { value: 0 },
-      // up to 4 generic params (float) that presets can map to
+      // generic params
       uParam1: { value: 0 },
       uParam2: { value: 0 },
       uParam3: { value: 0 },
@@ -37,10 +39,26 @@ export class Visualizer {
       uColor2: { value: new THREE.Color('#000000') }
     };
 
+    // Visual tuning (live adjustable)
+    this.tuning = {
+      sensitivity: 0.85,  // global intensity multiplier (0.1..2.0 typical)
+      smoothing: 0.65,    // 0..0.95 high = smoother visuals
+      clampMin: 0.0,      // clamp lower bound after gain/bias
+      clampMax: 0.9,      // clamp upper bound to avoid overdriving shaders
+      bias: 0.0           // add/subtract constant offset before clamp
+    };
+
+    // Per-band exponential moving averages to smooth visuals
+    this._ema = { bass: 0, mid: 0, treble: 0 };
+
     this._raf = 0;
     this._start = performance.now();
     this._preset = null;
     this._audioGetter = null; // function returning bands
+  }
+
+  setTuning(next = {}) {
+    Object.assign(this.tuning, next);
   }
 
   async init() {
@@ -72,7 +90,6 @@ export class Visualizer {
   async loadPreset(preset) {
     this._preset = preset;
 
-    // Load fragment shader text relative to this module file
     const shaderUrl = new URL(`../assets/shaders/${preset.shader}`, import.meta.url);
     const frag = await fetch(shaderUrl).then(r => r.text());
 
@@ -81,12 +98,11 @@ export class Visualizer {
     this.uniforms.uColor2.value = new THREE.Color(preset.params?.color2 || '#000000');
 
     // Map generic params to uParam1..4 if present
-    const keys = Object.keys(preset.params || {});
-    const paramVals = keys.map(k => preset.params[k]).filter(v => typeof v === 'number');
-    this.uniforms.uParam1.value = paramVals[0] ?? 0;
-    this.uniforms.uParam2.value = paramVals[1] ?? 0;
-    this.uniforms.uParam3.value = paramVals[2] ?? 0;
-    this.uniforms.uParam4.value = paramVals[3] ?? 0;
+    const numericVals = Object.values(preset.params || {}).filter(v => typeof v === 'number');
+    this.uniforms.uParam1.value = numericVals[0] ?? 0;
+    this.uniforms.uParam2.value = numericVals[1] ?? 0;
+    this.uniforms.uParam3.value = numericVals[2] ?? 0;
+    this.uniforms.uParam4.value = numericVals[3] ?? 0;
 
     // Replace material with new fragment shader
     this.material.dispose();
@@ -99,7 +115,6 @@ export class Visualizer {
   }
 
   setAudioGetter(fn) {
-    // fn should return { bass: {avg}, mid: {avg}, treble: {avg} }
     this._audioGetter = fn;
   }
 
@@ -111,6 +126,26 @@ export class Visualizer {
     this.uniforms.uResolution.value.set(w, h);
   }
 
+  _smooth(val, key) {
+    // smoothing is specified 0..0.95 => convert to EMA alpha
+    // alpha = 1 - smoothing; higher smoothing -> lower alpha -> slower response
+    const smoothing = Math.min(0.95, Math.max(0, this.tuning.smoothing));
+    const alpha = 1 - smoothing;
+    const prev = this._ema[key];
+    const next = prev + alpha * (val - prev);
+    this._ema[key] = next;
+    return next;
+  }
+
+  _processBand(raw) {
+    // apply bias and sensitivity, then clamp to safe range
+    const g = this.tuning.sensitivity ?? 1.0;
+    const b = this.tuning.bias ?? 0.0;
+    const minV = this.tuning.clampMin ?? 0.0;
+    const maxV = this.tuning.clampMax ?? 0.95;
+    return Math.min(maxV, Math.max(minV, (raw + b) * g));
+  }
+
   start() {
     if (this._raf) cancelAnimationFrame(this._raf);
     const tick = () => {
@@ -120,23 +155,35 @@ export class Visualizer {
 
       if (this._audioGetter) {
         const bands = this._audioGetter();
-        this.uniforms.uBass.value = bands?.bass?.avg ?? 0;
-        this.uniforms.uMid.value = bands?.mid?.avg ?? 0;
-        this.uniforms.uTreble.value = bands?.treble?.avg ?? 0;
+        // Safe defaults if band missing
+        const bassRaw = clamp01(bands?.bass?.avg ?? 0);
+        const midRaw = clamp01(bands?.mid?.avg ?? 0);
+        const trebleRaw = clamp01(bands?.treble?.avg ?? 0);
 
-        // If preset maps audio to params, apply here
+        const bassAdj = this._processBand(bassRaw);
+        const midAdj = this._processBand(midRaw);
+        const trebleAdj = this._processBand(trebleRaw);
+
+        const bass = this._smooth(bassAdj, 'bass');
+        const mid = this._smooth(midAdj, 'mid');
+        const treble = this._smooth(trebleAdj, 'treble');
+
+        this.uniforms.uBass.value = bass;
+        this.uniforms.uMid.value = mid;
+        this.uniforms.uTreble.value = treble;
+
+        // Optional preset param mapping (bounded by tuning already)
         const map = this._preset?.audioMap || {};
         const setParam = (paramName, val) => {
           if (paramName === 'bloomIntensity' || paramName === 'glow') {
-            // common visual intensities
             this.uniforms.uParam1.value = val;
-          } else if (paramName === 'motionScale' || paramName === 'rippleSize') {
+          } else if (paramName === 'motionScale' || paramName === 'rippleSize' || paramName === 'bloom') {
             this.uniforms.uParam2.value = val;
           }
         };
-        if (map.bass) setParam(map.bass, this.uniforms.uBass.value);
-        if (map.mid) setParam(map.mid, this.uniforms.uMid.value);
-        if (map.treble) setParam(map.treble, this.uniforms.uTreble.value);
+        if (map.bass) setParam(map.bass, bass);
+        if (map.mid) setParam(map.mid, mid);
+        if (map.treble) setParam(map.treble, treble);
       }
 
       this.renderer.render(this.scene, this.camera);

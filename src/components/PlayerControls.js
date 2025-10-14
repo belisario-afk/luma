@@ -1,6 +1,9 @@
-// PlayerControls.js - Transport, search, and source selection (Preview / Spotify SDK / Microphone)
+// PlayerControls.js - Transport, search, source selection, and live tuning
 
-export function PlayerControls(el, { onResumeAudioContext, onSearch, onSelectTrack, onSourceChange, onPlay, onPause }) {
+export function PlayerControls(
+  el,
+  { onResumeAudioContext, onSearch, onSelectTrack, onSourceChange, onPlay, onPause, onTuningChange }
+) {
   el.innerHTML = '';
 
   const row1 = document.createElement('div');
@@ -44,6 +47,40 @@ export function PlayerControls(el, { onResumeAudioContext, onSearch, onSelectTra
   sourceWrap.appendChild(select);
   transport.appendChild(sourceWrap);
 
+  // Tuning controls
+  const tuning = document.createElement('div');
+  tuning.className = 'flex items-center gap-3 flex-wrap mt-3 md:mt-0';
+  tuning.innerHTML = `
+    <span class="text-xs text-[color:var(--muted)]">Tuning</span>
+    <label class="text-xs">Sensitivity
+      <input type="range" min="0.2" max="2.0" step="0.05" value="0.85" class="align-middle ml-1" id="sens">
+    </label>
+    <label class="text-xs">Smoothing
+      <input type="range" min="0" max="0.95" step="0.05" value="0.65" class="align-middle ml-1" id="smooth">
+    </label>
+    <label class="text-xs">Clamp
+      <input type="range" min="0.5" max="1.0" step="0.05" value="0.9" class="align-middle ml-1" id="clamp">
+    </label>
+    <button class="ghost text-xs" id="reset">Reset</button>
+  `;
+
+  tuning.querySelector('#sens').addEventListener('input', emit);
+  tuning.querySelector('#smooth').addEventListener('input', emit);
+  tuning.querySelector('#clamp').addEventListener('input', emit);
+  tuning.querySelector('#reset').addEventListener('click', () => {
+    tuning.querySelector('#sens').value = '0.85';
+    tuning.querySelector('#smooth').value = '0.65';
+    tuning.querySelector('#clamp').value = '0.9';
+    emit();
+  });
+
+  function emit() {
+    const sensitivity = parseFloat(tuning.querySelector('#sens').value);
+    const smoothing = parseFloat(tuning.querySelector('#smooth').value);
+    const clampMax = parseFloat(tuning.querySelector('#clamp').value);
+    onTuningChange?.({ sensitivity, smoothing, clampMax });
+  }
+
   // Search
   const searchWrap = document.createElement('div');
   searchWrap.className = 'flex-1';
@@ -69,6 +106,7 @@ export function PlayerControls(el, { onResumeAudioContext, onSearch, onSelectTra
   searchWrap.appendChild(goBtn);
 
   row1.appendChild(transport);
+  row1.appendChild(tuning);
   row1.appendChild(searchWrap);
 
   el.appendChild(row1);

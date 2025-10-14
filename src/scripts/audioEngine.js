@@ -13,14 +13,13 @@ export class AudioEngine {
     this.fftSize = 2048; // power of two
     this.smoothingTimeConstant = 0.85;
 
-    // Bands indices (fractions of Nyquist)
     this.bandRanges = {
       bass: [20, 140],
       mid: [140, 2000],
       treble: [2000, 11025]
     };
 
-    this.sampleRate = 44100; // will be updated after context init
+    this.sampleRate = 44100;
 
     // Cache a single MediaElementSourceNode per HTMLMediaElement
     this._mediaElement = null;
@@ -50,6 +49,11 @@ export class AudioEngine {
     }
   }
 
+  setSmoothingTimeConstant(value) {
+    this.smoothingTimeConstant = Math.min(0.99, Math.max(0, value));
+    if (this.analyser) this.analyser.smoothingTimeConstant = this.smoothingTimeConstant;
+  }
+
   disconnect() {
     if (this.sourceNode) {
       try {
@@ -62,7 +66,6 @@ export class AudioEngine {
   connectNode(node) {
     this.disconnect();
     node.connect(this.analyser);
-    // analyser not connected to destination to keep silent visual-only by default
     this.sourceNode = node;
   }
 
@@ -70,7 +73,7 @@ export class AudioEngine {
     await this.init();
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
     const src = this.ctx.createMediaStreamSource(stream);
-    this._mediaElement = null; // no longer using element source
+    this._mediaElement = null;
     this._mediaElementSource = null;
     this.connectNode(src);
     return true;
@@ -79,7 +82,6 @@ export class AudioEngine {
   async connectToAudioElement(audioEl) {
     await this.init();
 
-    // Reuse an existing MediaElementSource for the same element; only one is allowed.
     if (this._mediaElementSource && this._mediaElement === audioEl) {
       this.connectNode(this._mediaElementSource);
       return true;
@@ -97,7 +99,6 @@ export class AudioEngine {
     return true;
   }
 
-  // Map Spotify track id to preview URL and set <audio> source
   async setSpotifyTrackById(trackId, token, audioEl) {
     if (!token) throw new Error('Missing Spotify token');
     const res = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {

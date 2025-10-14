@@ -1,5 +1,4 @@
-// app.js - Main orchestrator
-// Handles auth → audio engine → visualizer → UI and events (Preview, SDK, Mic)
+// app.js - Main orchestrator with SDK immediate track switch and visual tuning
 
 import { login, logout, isAuthenticated, maybeHandleRedirectCallback, fetchUserProfile, getAccessToken } from './auth.js';
 import { AudioEngine } from './audioEngine.js';
@@ -33,6 +32,7 @@ let viz = null;
 
 let currentPreset = presets[0];
 let sourceMode = 'preview'; // 'preview' | 'sdk' | 'mic'
+let pendingSdkUri = null;    // track to start once Play activates SDK
 
 // SDK + Analysis
 const sdk = new SpotifyPlayerController({ getAccessToken });
@@ -77,7 +77,6 @@ async function initAuth() {
     profile: spotify.profile
   });
 
-  // If token exists, initialize SDK (no audio until activate on user gesture)
   if (spotify.token) {
     try {
       await sdk.init();
@@ -88,7 +87,6 @@ async function initAuth() {
 }
 
 async function initAudio() {
-  // Attach analyser to the hidden audio element (no auto-resume)
   await audio.connectToAudioElement(dom.audioEl);
 }
 
@@ -97,7 +95,6 @@ async function initVisualizer() {
   viz = new Visualizer({ container: dom.canvasRoot });
   await viz.init();
   await viz.loadPreset(currentPreset);
-  // Default getter uses FFT from preview/mic
   viz.setAudioGetter(() => audio.getBands());
   viz.start();
 }
@@ -139,7 +136,7 @@ function setupComponents() {
         }
         try {
           await sdk.init();
-          // Do NOT transfer yet; wait for a user gesture (Play click) to call activate() and transfer.
+          // In SDK mode visuals come from analysis/feature/time-based synth
           viz.setAudioGetter(() => analysis.getBandsAt(sdk.getApproxPositionMs()));
           ui.toast('Spotify SDK mode (full track)');
         } catch (e) {
@@ -180,19 +177,31 @@ function setupComponents() {
         }
 
         if (sourceMode === 'sdk') {
-          try {
-            await analysis.load(item.id, spotify.token);
-          } catch {
-            // With new AnalysisEngine, load never throws. Keeping this for safety.
-          }
+          // Load analysis/features (non-blocking visuals)
+          await analysis.load(item.id, spotify.token).catch(() => { /* fallbacks inside engine */ });
+
           await sdk.init();
-          ui.toast('SDK ready. Click Play to start.', 'info');
-          // playback happens in onPlay()
+
+          // If SDK already activated (user previously hit Play), switch immediately.
+          if (sdk.isReady() && sdk.isActive()) {
+            try {
+              await sdk.playTrackUri(item.uri, 0);
+              pendingSdkUri = null;
+              ui.toast(`Playing: ${item.name}`);
+            } catch (e) {
+              ui.toast(e.message || 'Failed to start SDK playback', 'error');
+            }
+          } else {
+            // Defer until user presses Play (required gesture/transfer)
+            pendingSdkUri = item.uri;
+            ui.toast('Track queued. Press Play to start.', 'info');
+          }
         } else if (sourceMode === 'preview') {
           const url = await audio.setSpotifyTrackById(item.id, spotify.token, dom.audioEl);
           await audio.ensureRunning();
           await dom.audioEl.play();
           viz.setAudioGetter(() => audio.getBands());
+          ui.toast(`Preview: ${item.name}`);
         } else if (sourceMode === 'mic') {
           ui.toast('Mic mode active. Switch to Preview/Spotify to play tracks.');
         }
@@ -211,7 +220,16 @@ function setupComponents() {
             ui.toast(e.message, 'error');
             return;
           }
-          await sdk.resume();
+          if (pendingSdkUri) {
+            try {
+              await sdk.playTrackUri(pendingSdkUri, 0);
+              pendingSdkUri = null;
+            } catch (e) {
+              ui.toast(e.message || 'Failed to start SDK playback', 'error');
+            }
+          } else {
+            await sdk.resume();
+          }
         } else {
           await audio.ensureRunning();
           await dom.audioEl.play();
@@ -226,6 +244,15 @@ function setupComponents() {
       } else {
         dom.audioEl.pause();
       }
+    },
+    onTuningChange: ({ sensitivity, smoothing, clampMax }) => {
+      viz.setTuning({
+        sensitivity,
+        smoothing,
+        clampMax
+      });
+      // Optionally map a bit of smoothing into the analyser to calm FFT too
+      audio.setSmoothingTimeConstant(Math.min(0.95, Math.max(0, smoothing)));
     }
   });
 }
@@ -242,18 +269,18 @@ function setupAuthChangeListener() {
 
 function setupAudioEvents() {
   dom.audioEl.addEventListener('ended', () => {
-    // no-op; 30s preview ended
+    // preview ended
   });
 }
 
 async function main() {
   applyThemeByTime();
   setupAuthChangeListener();
-  await initAuth();         // renders navbar with login state and prepares SDK
-  await initAudio();        // attach analyser to audio element (no resume)
-  await initVisualizer();   // start rendering
-  setupComponents();        // selectors and controls
-  setupInactivityUI();      // auto-hide UI
+  await initAuth();         // login + SDK init
+  await initAudio();        // analyser
+  await initVisualizer();   // renderer
+  setupComponents();        // UI + bindings
+  setupInactivityUI();      // auto-hide
   setupAudioEvents();
 }
 

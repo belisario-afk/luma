@@ -60,6 +60,9 @@ export class SpotifyPlayerController {
     await this.player.connect();
   }
 
+  isReady() { return !!this.ready && !!this.deviceId; }
+  isActive() { return !!this._activated; }
+
   // Must be called in a user-gesture event (e.g., Play click) for audio to start
   async activate() {
     if (!this.player || this._activated) return;
