@@ -1,11 +1,52 @@
-// presets.js — add Dropper Pack presets that use dedicated composite shaders.
-// Each uses blank layers for BG/Bass/Vocal/Treble and renders entirely in the composite.
+// presets.js — Add Babylon 3D scenes to the selector, plus existing Dropper pack.
 
 const L = (file) => `../assets/shaders/layers/${file}`;
 const D = (file) => `../assets/shaders/dropper/${file}`;
 
 export const presets = [
-  // Dropper pack
+  // Babylon 3D pack (engine=babylon required)
+  {
+    id: "firefly-flock",
+    name: "Firefly Flock (3D)",
+    description: "Ambient GPU particles with reactive flicker and emission.",
+    params: { color1: "#f7f4e8", color2: "#b1e3ff" },
+    layerWeights: { bass: 1, vocal: 1, treble: 1 },
+    layerSet: { bg: L('blank.glsl'), bass: L('blank.glsl'), vocal: L('blank.glsl'), treble: L('blank.glsl'), comp: L('blank.glsl') }
+  },
+  {
+    id: "aurora-veils",
+    name: "Aurora Veils (3D)",
+    description: "Flowing filmic ribbons; energy and bass shape motion.",
+    params: { color1: "#7fe3ff", color2: "#b987ff" },
+    layerWeights: { bass: 1, vocal: 1, treble: 1 },
+    layerSet: { bg: L('blank.glsl'), bass: L('blank.glsl'), vocal: L('blank.glsl'), treble: L('blank.glsl'), comp: L('blank.glsl') }
+  },
+  {
+    id: "stone-tessellation",
+    name: "Stone Tessellation (3D)",
+    description: "Textured kaleido relief; energy lifts exposure.",
+    params: { color1: "#d29cff", color2: "#7fe3ff" },
+    layerWeights: { bass: 1, vocal: 1, treble: 1 },
+    layerSet: { bg: L('blank.glsl'), bass: L('blank.glsl'), vocal: L('blank.glsl'), treble: L('blank.glsl'), comp: L('blank.glsl') }
+  },
+  {
+    id: "infinite-drop",
+    name: "Infinite Drop SDF (3D)",
+    description: "Twisted tunnel raymarcher; camera drops infinitely; beat pulses.",
+    params: { color1: "#ff8ed1", color2: "#7fe3ff" },
+    layerWeights: { bass: 1, vocal: 1, treble: 1 },
+    layerSet: { bg: L('blank.glsl'), bass: L('blank.glsl'), vocal: L('blank.glsl'), treble: L('blank.glsl'), comp: L('blank.glsl') }
+  },
+  {
+    id: "ring-flight",
+    name: "Ring Flight (3D)",
+    description: "Neon torus tunnel; camera fly-through; reactive scale/rotation.",
+    params: { color1: "#7fe3ff", color2: "#ff7fd1" },
+    layerWeights: { bass: 1, vocal: 1, treble: 1 },
+    layerSet: { bg: L('blank.glsl'), bass: L('blank.glsl'), vocal: L('blank.glsl'), treble: L('blank.glsl'), comp: L('blank.glsl') }
+  },
+
+  // Dropper pack (GLSL composite scenes)
   {
     id: "dropper-spiral-tunnel",
     name: "Spiral Tunnel",
