@@ -26,6 +26,14 @@ function ensureBabylonLoaded() {
   });
 }
 
+// Local helper: optional direct scene selection via ?scene=infinite-drop
+function getScenePreference() {
+  try {
+    const url = new URL(window.location.href);
+    return (url.searchParams.get('scene') || '').toLowerCase();
+  } catch { return ''; }
+}
+
 export class BabylonRenderer {
   constructor({ container }) {
     this.container = container;
@@ -89,35 +97,33 @@ export class BabylonRenderer {
       // Defer until start() so audio getter is likely set
       this._autoProgram = program;
     }
+
+    // Optional direct scene loading
+    this._autoScene = getScenePreference();
   }
 
   async loadPreset(preset) {
     // Map known presets to Babylon scenes for first pass.
-    // You can expand this mapping as you add more Babylon scenes.
     const id = (preset?.id || '').toLowerCase();
 
-    // Dropper pack can be ignored; we’ll keep current scene unless explicitly a Babylon scene:
-    // We will accept: 'firefly-flock', 'aurora-veils', 'stone-tessellation'
     if (id.includes('firefly')) return this.loadScene('firefly-flock');
     if (id.includes('aurora')) return this.loadScene('aurora-veils');
     if (id.includes('stone')) return this.loadScene('stone-tessellation');
-    // Otherwise, no-op; Babylon scenes are selected via program or explicit calls.
+    if (id.includes('infinite')) return this.loadScene('infinite-drop');
   }
 
   setAudioGetter(fn) { this._audioGetter = fn; }
-  setTuning(_t) { /* optional: tie into post-processing later */ }
-  setAlbumColors(_palette, _enabled = true) { /* optional: color grading pipeline */ }
-  async setAlbumTexture(_url) { /* optional background */ }
+  setTuning(_t) { /* hook for post-processing */ }
+  setAlbumColors(_palette, _enabled = true) { /* hook for grading */ }
+  async setAlbumTexture(_url) { /* background hook */ }
 
   async loadScene(sceneId) {
     const B = window.BABYLON;
-    // Dispose previous meshes/effects but keep camera/light/scene
+    // Dispose previous content but keep camera/light/scene
     if (this._currentSceneId) {
-      // Dispose all root meshes except camera target helpers
       this.scene.meshes.slice().forEach(m => m.dispose && m.dispose());
       this.scene.particleSystems.slice().forEach(ps => ps.dispose && ps.dispose());
       this.scene.postProcesses?.slice().forEach(pp => pp.dispose && pp.dispose());
-      // Keep camera/light
     }
 
     if (sceneId === 'firefly-flock') {
@@ -141,7 +147,14 @@ export class BabylonRenderer {
       return;
     }
 
-    // Default: Firefly Flock
+    if (sceneId === 'infinite-drop') {
+      const mod = await import('./scenes/infiniteDropSDF.js');
+      this._sceneUpdater = mod.buildInfiniteDropSDF(this.scene);
+      this._currentSceneId = sceneId;
+      return;
+    }
+
+    // Default
     const mod = await import('./scenes/fireflyFlock.js');
     this._sceneUpdater = mod.buildFireflyFlock(this.scene);
     this._currentSceneId = 'firefly-flock';
@@ -155,6 +168,12 @@ export class BabylonRenderer {
       this._raf = requestAnimationFrame(loop);
     };
     loop();
+
+    // Optional direct scene load (overrides whatever was there)
+    if (this._autoScene) {
+      this.loadScene(this._autoScene);
+      this._autoScene = '';
+    }
 
     // Run a program if requested via URL
     if (this._autoProgram) {
